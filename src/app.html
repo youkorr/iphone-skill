@@ -291,10 +291,10 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
     <div class="card" id="lib-card">
       <div class="stack">
         <h2>Ta photothèque</h2>
-        <p class="small muted">Lance le raccourci <strong>Analyser mon iPhone</strong>, puis colle ici le texte qu'il a copié. La lecture se fait dès le collage. <a href="#raccourcis">Créer le raccourci</a></p>
+        <p class="small muted">Lance le raccourci <strong>Analyser mon iPhone</strong>, puis reviens ici et touche <strong>Coller le résultat</strong>. <a href="#raccourcis">Créer le raccourci</a></p>
       </div>
       <textarea id="lib-input" class="text-area" rows="2" placeholder="PLACENETTE photos=… videos=…"></textarea>
-      <div class="row"><button type="button" class="btn small-btn" id="lib-read">Lire le résultat</button></div>
+      <div class="row"><button type="button" class="btn small-btn" id="lib-read">Coller le résultat</button></div>
       <div id="lib-summary" class="stack" hidden></div>
     </div>
 
@@ -1120,10 +1120,8 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
 
   function readLibrary(text) {
     var lib = parseLibrary(text || "");
-    var box = $("lib-summary");
     if (!lib) {
-      box.hidden = false;
-      box.innerHTML = '<p class="small">Ce texte ne vient pas du raccourci : il doit commencer par PLACENETTE. Relance le raccourci, puis colle à nouveau.</p>';
+      libMessage("Ce texte ne vient pas du raccourci : il doit commencer par PLACENETTE. Relance le raccourci, puis colle à nouveau.");
       return;
     }
     state.library = lib;
@@ -1132,7 +1130,31 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
     renderAll();
   }
 
-  $("lib-read").addEventListener("click", function () { readLibrary($("lib-input").value); });
+  function libMessage(html) {
+    var box = $("lib-summary");
+    box.hidden = false;
+    box.innerHTML = '<p class="small">' + html + "</p>";
+  }
+
+  // Le bouton lit le presse-papiers lui-même ; iOS affiche alors une bulle « Coller » à toucher.
+  $("lib-read").addEventListener("click", function () {
+    var typed = $("lib-input").value.trim();
+    if (typed) { readLibrary(typed); return; }
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      libMessage("Touche la zone de texte, maintiens le doigt, puis choisis <strong>Coller</strong>.");
+      return;
+    }
+    navigator.clipboard.readText().then(function (t) {
+      if (!t || !/PLACENETTE/i.test(t)) {
+        libMessage("Le presse-papiers ne contient pas le résultat du raccourci. Lance <strong>Analyser mon iPhone</strong>, puis reviens toucher ce bouton.");
+        return;
+      }
+      $("lib-input").value = t.trim();
+      readLibrary(t);
+    }, function () {
+      libMessage("Collage refusé. Touche la zone de texte, maintiens le doigt, puis choisis <strong>Coller</strong>.");
+    });
+  });
   $("lib-input").addEventListener("paste", function (e) {
     var t = e.clipboardData && e.clipboardData.getData("text");
     if (t && /PLACENETTE/i.test(t)) setTimeout(function () { readLibrary(t); }, 0);
