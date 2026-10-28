@@ -18,7 +18,7 @@ import photos
 import ui
 from objc_util import ObjCClass, ObjCInstance, create_objc_class, ns, nsurl, on_main_thread
 
-VERSION = "1.2"
+VERSION = "1.3"
 TOP_VIDEOS = 30
 MAX_SCREEN_THUMBS = 60
 MAX_DUP_GROUPS = 40
@@ -273,7 +273,7 @@ CSS = """
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, system-ui, sans-serif; }
-.wrap { padding: 18px 16px 120px; display: grid; gap: 22px; max-width: 640px; margin: 0 auto; }
+.wrap { padding: 18px 16px 40px; display: grid; gap: 22px; max-width: 640px; margin: 0 auto; }
 h1 { font-size: 1.9rem; line-height: 1.1; margin: 0; letter-spacing: -0.02em; }
 h2 { font-size: 1.3rem; margin: 0; }
 p { margin: 0; }
@@ -306,8 +306,8 @@ button { font: 600 0.92rem -apple-system, system-ui, sans-serif; border-radius: 
 .group { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .notice { background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; font-size: 0.92rem; }
 .warn { color: var(--warn); }
-.dock { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  background: var(--surface); border-top: 1px solid var(--line); display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.dock { position: sticky; top: 0; z-index: 5; padding: 10px 16px;
+  background: var(--surface); border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .dock button { background: var(--accent); color: var(--accent-ink); border: 0; padding: 12px 18px; font-size: 1rem; }
 .dock button:disabled { opacity: .4; }
 details.app { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -453,7 +453,8 @@ def report_page(lib, total, free, notice="", folder=None):
         return "%.2f%%" % (100.0 * b / total) if total else "0%"
 
     other = max(0, used - lib_total)
-    out = ["<div class='wrap'>"]
+    out = ["<div class='dock'><span class='small' id='sel-count'>Rien de sélectionné</span>"
+           "<button id='del' onclick='del()' disabled>Supprimer</button></div>", "<div class='wrap'>"]
     if notice:
         out.append("<div class='notice'>" + notice + "</div>")
     out.append(
@@ -526,8 +527,6 @@ def report_page(lib, total, free, notice="", folder=None):
         "Redémarrer l'iPhone et installer la dernière mise à jour d'iOS aide à les faire baisser.</p></div>")
     out.append("<p class='small muted' style='text-align:center'>Place Nette " + VERSION + " · rien ne quitte ton iPhone</p>")
     out.append("</div>")
-    out.append("<div class='dock'><span class='small' id='sel-count'>Rien de sélectionné</span>"
-               "<button id='del' onclick='del()' disabled>Supprimer</button></div>")
 
     script = ("var SIZES = " + json.dumps(sizes) + "; var GROUPS = " + json.dumps(groups) + ";" + JS + "upd();")
     return page("".join(out), script)
@@ -542,6 +541,7 @@ class App:
         self.wv = ui.WebView(name="Place Nette")
         self.wv.delegate = self
         self.wv.load_html(loading_page())
+        self.wv.right_button_items = [ui.ButtonItem(title="Supprimer", action=self.native_delete)]
         self.wv.present("fullscreen")
         self.busy = False
         threading.Thread(target=self.poll_actions, daemon=True).start()
@@ -563,6 +563,21 @@ class App:
                 continue
             for a in actions:
                 self.handle(a)
+
+    def native_delete(self, sender):
+        # Le bouton natif est touché sur le fil principal : la lecture de la page se fait à côté
+        threading.Thread(target=self._native_delete, daemon=True).start()
+
+    def _native_delete(self):
+        try:
+            ids = json.loads(self.js("typeof sel === 'object' ? JSON.stringify(Array.from(sel)) : '[]'") or "[]")
+        except Exception:
+            ids = []
+        if not ids:
+            self.refresh("Sélectionne d'abord des photos ou des vidéos en touchant leurs vignettes, puis touche Supprimer.")
+            return
+        if not self.busy:
+            self.delete(ids)
 
     def handle(self, a):
         t = a.get("t")
