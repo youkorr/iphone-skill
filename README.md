@@ -11,6 +11,10 @@ Web app pour iPhone qui aide à **libérer du stockage** et à **donner une seco
 
 Rien n'est envoyé : les données restent dans le navigateur de l'iPhone (`localStorage`). Une fois installée, l'app fonctionne hors ligne.
 
+## Version Pythonista
+
+Le dossier [`pythonista/`](pythonista/) contient une version qui analyse l'iPhone toute seule (espace libre, taille de chaque photo et vidéo, captures, doublons) et supprime en quelques gestes. Elle tourne dans l'app Pythonista 3, sans compte développeur.
+
 ## Installer sur l'iPhone
 
 1. Ouvre l'adresse GitHub Pages du dépôt dans **Safari**.
