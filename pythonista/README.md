@@ -13,7 +13,7 @@ On coche ce qu'on veut supprimer ; iOS demande confirmation et les éléments pa
 Dans Pythonista, ouvre la **console** et colle cette ligne :
 
 ```python
-import requests,os;open(os.path.expanduser('~/Documents/Place Nette.py'),'w').write(requests.get('https://raw.githubusercontent.com/youkorr/iphone-skill/claude/place-nette-pwa/pythonista/place_nette.py').text)
+import requests,os;open(os.path.expanduser('~/Documents/Place Nette.py'),'wb').write(requests.get('https://raw.githubusercontent.com/youkorr/iphone-skill/claude/place-nette-pwa/pythonista/place_nette.py').content)
 ```
 
 Puis ouvre **Place Nette.py** dans la bibliothèque et touche ▶. La même ligne installe la dernière version.
