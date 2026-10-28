@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Libère le stockage de ton iPhone et donne-lui une seconde vie.">
+<meta name="theme-color" content="#0A7A61">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Place Nette">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+</head>
+<body>
+<title>Place Nette</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout : une colonne façon app iOS, jauge de stockage en ouverture, barre d'onglets fixée en bas */
+:root {
+  --bg: #F1F5F4;
+  --surface: #FFFFFF;
+  --ink: #12201C;
+  --muted: #586A65;
+  --line: #D8E2DF;
+  --accent: #0A7A61;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #DCEFE9;
+  --ok: #1E7F48;
+  --warn: #A86A0C;
+  --crit: #B93A12;
+  --c-apps: #3A6AD4;
+  --c-photos: #DE9A12;
+  --c-messages: #2E9E60;
+  --c-medias: #D2457A;
+  --c-ios: #7D8893;
+  --c-system: #A9B4BD;
+  --c-other: #7656CC;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Instrument Sans", -apple-system, "Helvetica Neue", system-ui, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 14px;
+  --tabbar-h: 64px;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0C1311; --surface: #141D1A; --ink: #E3ECE9; --muted: #92A39E; --line: #24302C;
+    --accent: #45D2AC; --accent-ink: #052119; --accent-soft: #123A2F;
+    --ok: #4CC67E; --warn: #E6A63B; --crit: #F07A52;
+    --c-apps: #5C8BF0; --c-photos: #F0B232; --c-messages: #45C27E; --c-medias: #EC6B9A;
+    --c-ios: #8C98A3; --c-system: #5D6A74; --c-other: #9A7DEB;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0C1311; --surface: #141D1A; --ink: #E3ECE9; --muted: #92A39E; --line: #24302C;
+  --accent: #45D2AC; --accent-ink: #052119; --accent-soft: #123A2F;
+  --ok: #4CC67E; --warn: #E6A63B; --crit: #F07A52;
+  --c-apps: #5C8BF0; --c-photos: #F0B232; --c-messages: #45C27E; --c-medias: #EC6B9A;
+  --c-ios: #8C98A3; --c-system: #5D6A74; --c-other: #9A7DEB;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.5 var(--font-body);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 32px);
+  display: grid;
+  gap: 28px;
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 2.1rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+h2 { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; }
+h3 { font-size: 1.08rem; font-weight: 600; line-height: 1.25; }
+p { margin: 0; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 500; }
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+.eyebrow { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.view { display: grid; gap: 28px; }
+.stack { display: grid; gap: 12px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+/* En-tête */
+.brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand-mark { display: flex; align-items: center; gap: 10px; }
+.brand-mark svg { width: 34px; height: 34px; flex: none; }
+.brand-name { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; letter-spacing: -0.01em; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  white-space: nowrap;
+}
+.chip.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.chip.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.chip.crit { background: color-mix(in srgb, var(--crit) 15%, transparent); color: var(--crit); }
+
+/* Jauge */
+.gauge { display: grid; gap: 14px; }
+.gauge-figure { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.gauge-figure .big { font-family: var(--font-display); font-weight: 800; font-size: 3.2rem; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.bar {
+  position: relative;
+  display: flex; height: 22px; border-radius: 7px; overflow: hidden;
+  background: var(--line);
+}
+.bar span { display: block; height: 100%; transition: width 0.5s cubic-bezier(.2,.8,.2,1); }
+.bar span + span { border-left: 2px solid var(--bg); }
+.bar .reclaim {
+  position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(-45deg, var(--accent) 0 3px, transparent 3px 7px);
+  opacity: 0.9;
+  border-left: 2px solid var(--accent);
+  transition: left 0.5s cubic-bezier(.2,.8,.2,1), width 0.5s cubic-bezier(.2,.8,.2,1);
+}
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.82rem; color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+.legend .hatch { background: repeating-linear-gradient(-45deg, var(--accent) 0 2px, transparent 2px 4px); outline: 1px solid var(--accent); }
+
+/* Cartes et formulaires */
+.card { background: var(--surface); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; }
+.notice { font-size: 0.875rem; padding: 10px 14px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  font: 600 0.9rem var(--font-num); font-variant-numeric: tabular-nums;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink); cursor: pointer; min-height: 40px;
+}
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.fields { display: grid; gap: 2px; }
+.field {
+  display: grid; grid-template-columns: 14px 1fr auto; gap: 12px; align-items: center;
+  padding-block: 10px; border-bottom: 1px solid var(--line);
+}
+.field:last-child { border-bottom: 0; }
+.field .dot { width: 12px; height: 12px; border-radius: 4px; }
+.field label { min-width: 0; }
+.field label small { display: block; color: var(--muted); font-size: 0.8rem; line-height: 1.3; }
+.input-go { display: flex; align-items: center; gap: 6px; }
+.input-go input, .text-input {
+  width: 5.2em; font: 500 1rem var(--font-num); font-variant-numeric: tabular-nums; text-align: right;
+  padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink);
+}
+.input-go span { color: var(--muted); font-size: 0.85rem; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 600 1rem var(--font-body); padding: 13px 20px; border-radius: 12px; border: 0;
+  background: var(--accent); color: var(--accent-ink); cursor: pointer; text-decoration: none; min-height: 48px;
+}
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.btn.small-btn { padding: 8px 14px; min-height: 38px; font-size: 0.9rem; }
+
+/* Plan */
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.summary div { background: var(--surface); border-radius: 12px; padding: 12px; display: grid; gap: 2px; }
+.summary .num { font-size: 1.25rem; }
+.summary .eyebrow { font-size: 0.68rem; }
+.progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.tasks { display: grid; gap: 10px; }
+.task { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.task-head { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: start; padding: 14px 16px; }
+.check {
+  appearance: none; -webkit-appearance: none; margin: 2px 0 0; width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--line); background: transparent; cursor: pointer; display: grid; place-items: center;
+}
+.check:checked { background: var(--accent); border-color: var(--accent); }
+.check:checked::after { content: ""; width: 7px; height: 12px; border: solid var(--accent-ink); border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+.task-body { min-width: 0; display: grid; gap: 6px; }
+.task.done h3 { text-decoration: line-through; text-decoration-color: var(--muted); color: var(--muted); }
+.path { font: 500 0.78rem/1.4 var(--font-num); color: var(--muted); overflow-wrap: anywhere; }
+.gain { text-align: right; display: grid; gap: 4px; justify-items: end; }
+.gain .num { font-size: 1.05rem; color: var(--accent); white-space: nowrap; }
+.cat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 6px; }
+details.steps { border-top: 1px solid var(--line); }
+details.steps summary {
+  cursor: pointer; list-style: none; padding: 10px 16px 10px 58px; font-size: 0.875rem; font-weight: 600; color: var(--accent);
+}
+details.steps summary::-webkit-details-marker { display: none; }
+details.steps summary::after { content: " ▾"; }
+details.steps[open] summary::after { content: " ▴"; }
+details.steps ol, details.steps .why { margin: 0; padding: 0 16px 14px 58px; font-size: 0.92rem; }
+details.steps ol { padding-left: 76px; display: grid; gap: 6px; }
+.why { color: var(--muted); }
+
+/* Raccourcis et seconde vie */
+.recipe { background: var(--surface); border-radius: var(--radius); padding: 18px; display: grid; gap: 12px; }
+.recipe ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.action-name { font-weight: 600; background: var(--accent-soft); padding: 1px 7px; border-radius: 6px; white-space: nowrap; }
+.ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.idea { background: var(--surface); border-radius: 12px; padding: 14px; display: grid; gap: 4px; align-content: start; }
+.idea p { font-size: 0.88rem; color: var(--muted); }
+.checklist { display: grid; gap: 2px; }
+.checklist label {
+  display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start;
+  padding-block: 10px; border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.checklist label:last-child { border-bottom: 0; }
+.checklist small { display: block; color: var(--muted); font-size: 0.82rem; }
+.verdict { display: grid; gap: 6px; }
+footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
+
+/* Barre d'onglets */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px); backdrop-filter: saturate(1.6) blur(18px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+}
+.tabbar nav { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); height: var(--tabbar-h); }
+.tabbar a {
+  display: grid; justify-items: center; align-content: center; gap: 3px;
+  text-decoration: none; color: var(--muted); font-size: 0.7rem; font-weight: 600;
+}
+.tabbar a svg { width: 24px; height: 24px; }
+.tabbar a[aria-current="page"] { color: var(--accent); }
+
+@media (max-width: 420px) {
+  h1 { font-size: 1.85rem; }
+  .gauge-figure .big { font-size: 2.7rem; }
+  .ideas { grid-template-columns: 1fr; }
+  .summary .num { font-size: 1.05rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+<div class="wrap">
+  <header class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="56" rx="16" fill="var(--accent)"/>
+        <rect x="14" y="27" width="36" height="10" rx="3" fill="var(--accent-ink)" opacity="0.35"/>
+        <rect x="14" y="27" width="20" height="10" rx="3" fill="var(--accent-ink)"/>
+      </svg>
+      <span class="brand-name">Place Nette</span>
+    </div>
+    <span class="chip" id="status-chip">…</span>
+  </header>
+
+  <!-- DIAGNOSTIC -->
+  <section class="view" id="view-diagnostic" aria-labelledby="t-diag">
+    <div class="gauge">
+      <p class="eyebrow" id="t-diag">Stockage de ton iPhone</p>
+      <div class="gauge-figure">
+        <span class="big" id="g-free">0</span>
+        <span class="muted">Go libres sur <span class="num" id="g-cap">128</span> Go</span>
+      </div>
+      <div class="bar" id="g-bar" role="img" aria-label="Répartition du stockage"></div>
+      <div class="legend" id="g-legend"></div>
+      <p class="small muted" id="g-projection"></p>
+    </div>
+
+    <div class="notice" id="example-notice">
+      Ce sont des <strong>chiffres d'exemple</strong>. Ouvre <strong>Réglages › Général › Stockage iPhone</strong>, attends que la barre se calcule, puis recopie tes valeurs ci-dessous.
+    </div>
+
+    <div class="card">
+      <h2>Capacité</h2>
+      <div class="seg" id="capacity" role="group" aria-label="Capacité de l'iPhone"></div>
+    </div>
+
+    <div class="card">
+      <div class="stack">
+        <h2>Ce qui prend la place</h2>
+        <p class="small muted">Valeurs en Go, comme dans la barre de Stockage iPhone. 1 Go = 1000 Mo.</p>
+      </div>
+      <div class="fields" id="fields"></div>
+    </div>
+
+    <div class="card">
+      <h2>Photos et iCloud</h2>
+      <p class="small muted">Tes photos sont-elles synchronisées avec iCloud, avec de la place libre dans iCloud ?</p>
+      <div class="seg" id="icloud" role="group" aria-label="Photos iCloud"></div>
+    </div>
+
+    <a class="btn" href="#plan">Voir mon plan de nettoyage</a>
+  </section>
+
+  <!-- PLAN -->
+  <section class="view" id="view-plan" aria-labelledby="t-plan" hidden>
+    <div class="stack">
+      <p class="eyebrow">Plan de nettoyage</p>
+      <h1 id="t-plan">Jusqu'à <span id="p-potential">0</span> Go à récupérer</h1>
+      <p class="muted">Les actions sont classées par gain estimé. Coche-les au fur et à mesure.</p>
+    </div>
+    <div class="stack">
+      <div class="summary">
+        <div><span class="eyebrow">Avant</span><span class="num" id="s-before">0 Go</span></div>
+        <div><span class="eyebrow">Récupéré</span><span class="num" id="s-done">0 Go</span></div>
+        <div><span class="eyebrow">Objectif</span><span class="num" id="s-target">0 Go</span></div>
+      </div>
+      <div class="progress" aria-hidden="true"><span id="s-progress" style="width:0%"></span></div>
+    </div>
+    <div class="tasks" id="tasks"></div>
+
+    <div class="card">
+      <h2>Mesure réelle</h2>
+      <p class="small muted">Les gains ci-dessus sont des estimations. Une fois fini, regarde l'espace libre dans Stockage iPhone et note-le ici.</p>
+      <div class="row">
+        <label for="free-after" class="small">Espace libre maintenant</label>
+        <div class="input-go"><input id="free-after" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0"><span>Go</span></div>
+      </div>
+      <p id="after-result" class="verdict" hidden></p>
+    </div>
+  </section>
+
+  <!-- RACCOURCIS -->
+  <section class="view" id="view-raccourcis" aria-labelledby="t-sc" hidden>
+    <div class="stack">
+      <p class="eyebrow">App Raccourcis</p>
+      <h1 id="t-sc">Automatise le ménage</h1>
+      <p class="muted">Ces raccourcis se créent en quelques minutes dans l'app Raccourcis, déjà installée sur ton iPhone. Les noms en surbrillance sont les actions à chercher dans la barre de recherche de l'éditeur.</p>
+    </div>
+    <div class="stack" id="recipes"></div>
+  </section>
+
+  <!-- SECONDE VIE -->
+  <section class="view" id="view-seconde-vie" aria-labelledby="t-sv" hidden>
+    <div class="stack">
+      <p class="eyebrow">Seconde vie</p>
+      <h1 id="t-sv">Garder l'iPhone en forme, ou lui trouver un nouveau rôle</h1>
+    </div>
+
+    <div class="card">
+      <h2>Batterie</h2>
+      <p class="small muted">Réglages › Batterie › État et charge de la batterie › <strong>Capacité maximale</strong></p>
+      <div class="row">
+        <label for="battery" class="small">Capacité maximale</label>
+        <div class="input-go"><input id="battery" type="number" inputmode="numeric" min="1" max="100" placeholder="—"><span>%</span></div>
+      </div>
+      <div id="battery-verdict" class="verdict small muted">Note ta valeur pour savoir si la batterie mérite d'être changée.</div>
+    </div>
+
+    <div class="card">
+      <h2>Retrouver de la fluidité</h2>
+      <div class="checklist" id="smooth"></div>
+    </div>
+
+    <div class="stack">
+      <h2>Lui donner un nouveau rôle</h2>
+      <div class="ideas" id="ideas"></div>
+    </div>
+
+    <div class="card">
+      <h2>Avant de le revendre ou le donner</h2>
+      <p class="small muted">Dans cet ordre. Sauter une étape peut bloquer le prochain propriétaire.</p>
+      <div class="checklist" id="handover"></div>
+    </div>
+  </section>
+
+  <footer class="note">Tes chiffres restent sur cet iPhone. Rien n'est envoyé nulle part.</footer>
+</div>
+
+<div class="tabbar">
+  <nav aria-label="Sections">
+    <a href="#diagnostic" data-tab="diagnostic">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="9" width="18" height="6" rx="2"/><path d="M8 9v6M13 9v6"/></svg>
+      Diagnostic
+    </a>
+    <a href="#plan" data-tab="plan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l2 2 3-3M4 13l2 2 3-3M12 7h8M12 14h8M12 20h8M5 20h2"/></svg>
+      Plan
+    </a>
+    <a href="#raccourcis" data-tab="raccourcis">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 3L5 13h6l-1 8 8-10h-6l1-8z"/></svg>
+      Raccourcis
+    </a>
+    <a href="#seconde-vie" data-tab="seconde-vie">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>
+      Seconde vie
+    </a>
+  </nav>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // --- Données ---------------------------------------------------------
+  var CAPACITIES = [16, 32, 64, 128, 256, 512, 1024];
+  var CATS = [
+    { id: "apps", label: "Apps", hint: "Total de la catégorie Apps", color: "--c-apps" },
+    { id: "photos", label: "Photos", hint: "Photos et vidéos", color: "--c-photos" },
+    { id: "messages", label: "Messages", hint: "Conversations et pièces jointes", color: "--c-messages" },
+    { id: "medias", label: "Médias", hint: "Musique, podcasts, vidéos téléchargées", color: "--c-medias" },
+    { id: "ios", label: "iOS", hint: "Le système lui-même, non compressible", color: "--c-ios" },
+    { id: "system", label: "Données système", hint: "Caches, journaux, fichiers temporaires", color: "--c-system" },
+    { id: "other", label: "Autres", hint: "Mail, iCloud Drive, Livres, le reste", color: "--c-other" }
+  ];
+  var EXAMPLE = { capacity: 128, apps: 34.6, photos: 41.2, messages: 9.8, medias: 6.1, ios: 9.4, system: 17.3, other: 3.2, icloud: "non", example: true };
+
+  var RISK = {
+    safe: { label: "Sans risque", cls: "ok" },
+    check: { label: "À vérifier", cls: "warn" },
+    final: { label: "Définitif", cls: "crit" }
+  };
+
+  var TASKS = [
+    {
+      id: "icloud-optimize", cat: "photos", risk: "safe",
+      title: "Optimiser le stockage des photos",
+      path: "Réglages › [ton nom] › iCloud › Photos",
+      when: function (d) { return d.icloud === "oui"; },
+      gain: function (d) { return d.photos * 0.6; },
+      why: "Les originaux restent dans iCloud, l'iPhone garde des versions légères. Il faut assez de place iCloud.",
+      steps: ["Active « Synchroniser cet iPhone ».", "Choisis « Optimiser le stockage de l'iPhone ».", "iOS libère la place progressivement, en commençant par les photos les plus anciennes."]
+    },
+    {
+      id: "videos", cat: "photos", risk: "check",
+      title: "Trier les vidéos les plus lourdes",
+      path: "Photos › Albums › Types de médias › Vidéos",
+      gain: function (d) { return d.photos * (d.icloud === "oui" ? 0.1 : 0.25); },
+      why: "Une minute de vidéo en 4K à 60 i/s pèse environ 400 Mo. Quelques vidéos longues suffisent à remplir un iPhone.",
+      steps: ["Repère les vidéos longues : la durée est affichée sur chaque vignette.", "Envoie celles qui comptent vers un cloud ou un proche, puis supprime-les.", "Pour la suite : Réglages › Appareil photo › Enregistrer une vidéo › 1080p à 30 i/s."]
+    },
+    {
+      id: "msg-attach", cat: "messages", risk: "check",
+      title: "Supprimer les grosses pièces jointes",
+      path: "Réglages › Général › Stockage iPhone › Messages",
+      gain: function (d) { return d.messages * 0.5; },
+      why: "Photos, vidéos et GIF reçus dans les conversations sont stockés une seconde fois dans Messages.",
+      steps: ["Touche « Examiner les grandes pièces jointes ».", "Balaye vers la gauche pour supprimer, ou « Modifier » pour en sélectionner plusieurs.", "Fais de même dans les rubriques Photos, Vidéos et GIF du même écran."]
+    },
+    {
+      id: "offload", cat: "apps", risk: "safe",
+      title: "Décharger les apps inutilisées",
+      path: "Réglages › Général › Stockage iPhone",
+      gain: function (d) { return d.apps * 0.25; },
+      why: "Décharger retire l'app mais garde tes documents et données. L'icône reste, un toucher la réinstalle.",
+      steps: ["Dans la liste, repère les apps peu utilisées : la date de dernière utilisation est indiquée.", "Touche l'app, puis « Décharger l'app ».", "Pour automatiser : Réglages › Apps › App Store › Décharger les apps inutilisées."]
+    },
+    {
+      id: "system-light", cat: "system", risk: "safe",
+      title: "Faire dégonfler les Données système",
+      path: "Réglages › Général › Mise à jour logicielle",
+      when: function (d) { return d.system > 6; },
+      gain: function (d) { return (d.system - 5) * 0.35; },
+      why: "Au-delà de 6 Go environ, les Données système contiennent surtout des caches qu'iOS sait purger.",
+      steps: ["Installe la dernière version d'iOS proposée.", "Fais un redémarrage forcé : volume +, volume −, puis maintiens le bouton latéral jusqu'à la pomme.", "Laisse l'iPhone en charge sur le Wi-Fi une nuit : iOS fait son ménage quand il a le temps.", "Mesure à nouveau le lendemain."]
+    },
+    {
+      id: "reinstall", cat: "apps", risk: "check",
+      title: "Réinstaller les apps qui gonflent",
+      path: "Réglages › Général › Stockage iPhone › [l'app]",
+      gain: function (d) { return d.apps * 0.15; },
+      why: "Quand « Documents et données » dépasse largement la taille de l'app, c'est surtout du cache. Réinstaller le vide.",
+      steps: ["Cas fréquents : TikTok, Instagram, Snapchat, Facebook, Telegram, Spotify.", "Vérifie d'abord que tu connais ton mot de passe pour te reconnecter.", "Touche « Supprimer l'app », puis réinstalle-la depuis l'App Store.", "Telegram et Spotify ont un bouton « Vider le cache » dans leurs propres réglages : essaie-le d'abord."]
+    },
+    {
+      id: "medias", cat: "medias", risk: "safe",
+      title: "Effacer les médias téléchargés",
+      path: "Réglages › Général › Stockage iPhone",
+      gain: function (d) { return d.medias * 0.7; },
+      why: "Musique, épisodes de podcasts et films téléchargés se retéléchargent quand tu veux.",
+      steps: ["Musique : touche l'app dans Stockage iPhone, puis « Modifier » pour retirer des titres.", "Podcasts : Réglages › Apps › Podcasts › Supprimer les épisodes écoutés.", "Netflix, Prime Video, Disney+ : onglet Téléchargements de chaque app."]
+    },
+    {
+      id: "deleted", cat: "photos", risk: "final",
+      title: "Vider « Supprimés récemment »",
+      path: "Photos › Albums › Utilitaires › Supprimés récemment",
+      gain: function (d) { return d.photos * 0.08; },
+      why: "Les photos supprimées restent 30 jours dans cet album et occupent toujours de la place.",
+      steps: ["Ouvre l'album, déverrouille-le avec Face ID ou ton code.", "Vérifie qu'aucune photo importante n'y traîne.", "Touche « Sélectionner », puis « Tout supprimer »."]
+    },
+    {
+      id: "msg-keep", cat: "messages", risk: "final",
+      title: "Ne garder les messages qu'un an",
+      path: "Réglages › Apps › Messages › Garder les messages",
+      gain: function (d) { return d.messages * 0.2; },
+      why: "Par défaut, iOS garde tous les messages pour toujours.",
+      steps: ["Choisis « 1 an » ou « 30 jours ».", "Les messages plus anciens sont effacés immédiatement : sauvegarde d'abord les conversations importantes."]
+    },
+    {
+      id: "duplicates", cat: "photos", risk: "safe",
+      title: "Fusionner les photos en double",
+      path: "Photos › Albums › Utilitaires › Doublons",
+      gain: function (d) { return d.photos * 0.05; },
+      why: "Depuis iOS 16, Photos détecte les doublons. La fusion garde la meilleure version.",
+      steps: ["Ouvre l'album Doublons. S'il n'apparaît pas, il n'y a pas de doublon détecté.", "Touche « Fusionner » sur chaque groupe, ou « Sélectionner › Tout sélectionner › Fusionner ».", "Les copies vont dans Supprimés récemment."]
+    },
+    {
+      id: "safari", cat: "other", risk: "check",
+      title: "Vider l'historique et les données de Safari",
+      path: "Réglages › Apps › Safari",
+      gain: function () { return 0.5; },
+      why: "Le cache des sites web finit dans les Données système et dans Safari.",
+      steps: ["Touche « Effacer historique, données de site ». Tu seras déconnecté des sites web.", "Désactive aussi « Enregistrer automatiquement hors connexion » pour la liste de lecture."]
+    },
+    {
+      id: "system-restore", cat: "system", risk: "check",
+      title: "Repartir propre : sauvegarde puis restauration",
+      path: "Réglages › Général › Transférer ou réinitialiser l'iPhone",
+      when: function (d) { return d.system > 15; },
+      gain: function (d) { return (d.system - 5) * 0.4; },
+      why: "Dernier recours quand les Données système dépassent 15 Go malgré le reste. Compte une à deux heures.",
+      steps: ["Sauvegarde : Réglages › [ton nom] › iCloud › Sauvegarde iCloud › Sauvegarder maintenant. Il faut assez de place iCloud.", "Vérifie que la date de la dernière sauvegarde est bien celle d'aujourd'hui.", "Transférer ou réinitialiser l'iPhone › Effacer contenu et réglages.", "Au redémarrage, choisis « Restaurer depuis iCloud »."]
+    }
+  ];
+
+  var RECIPES = [
+    {
+      title: "Ménage des captures d'écran",
+      desc: "Supprime d'un coup les captures de plus de 30 jours. iOS te demande confirmation avant d'effacer.",
+      steps: [
+        "Ouvre Raccourcis, touche <strong>+</strong> en haut à droite.",
+        "Ajoute l'action <span class=\"action-name\">Rechercher des photos</span>.",
+        "Touche « Ajouter un filtre » : <em>Est une capture d'écran</em> est <em>vrai</em>.",
+        "Ajoute un second filtre : <em>Date de création</em> n'est pas dans les <em>30 derniers jours</em>.",
+        "Ajoute l'action <span class=\"action-name\">Supprimer les photos</span>.",
+        "Renomme le raccourci « Ménage des captures » et lance-le."
+      ]
+    },
+    {
+      title: "Les 20 vidéos les plus longues",
+      desc: "Affiche une liste des vidéos les plus longues pour choisir celles à supprimer.",
+      steps: [
+        "Nouveau raccourci, action <span class=\"action-name\">Rechercher des photos</span>.",
+        "Filtre : <em>Type de média</em> est <em>Vidéo</em>.",
+        "Trier par <em>Durée</em>, ordre <em>Le plus long en premier</em>, limite <em>20</em>.",
+        "Ajoute <span class=\"action-name\">Choisir dans la liste</span> et active « Sélectionner plusieurs ».",
+        "Ajoute <span class=\"action-name\">Supprimer les photos</span>."
+      ]
+    },
+    {
+      title: "Rappel mensuel de nettoyage",
+      desc: "Le 1er de chaque mois, une notification t'invite à faire un tour dans Place Nette.",
+      steps: [
+        "Onglet <strong>Automatisation</strong> › <strong>Nouvelle automatisation</strong>.",
+        "Choisis <em>Heure de la journée</em>, règle sur 10 h, <em>Mensuel</em>, le 1er.",
+        "Sélectionne « Exécuter immédiatement ».",
+        "Ajoute l'action <span class=\"action-name\">Afficher une notification</span> avec le texte « Petit ménage de l'iPhone ».",
+        "Pour ouvrir directement l'app, ajoute <span class=\"action-name\">Ouvrir les URL</span> avec l'adresse de Place Nette."
+      ]
+    },
+    {
+      title: "Mode Économie d'énergie automatique",
+      desc: "Ménage la batterie d'un iPhone âgé en activant l'économie d'énergie avant qu'il ne soit trop tard.",
+      steps: [
+        "Onglet <strong>Automatisation</strong> › <strong>Nouvelle automatisation</strong>.",
+        "Choisis <em>Niveau de batterie</em> › <em>Tombe sous 30 %</em>, puis « Exécuter immédiatement ».",
+        "Ajoute l'action <span class=\"action-name\">Définir le mode Économie d'énergie</span> sur <em>Activé</em>."
+      ]
+    }
+  ];
+
+  var SMOOTH = [
+    { id: "s-update", t: "Mettre iOS à jour", s: "Réglages › Général › Mise à jour logicielle" },
+    { id: "s-motion", t: "Réduire les animations", s: "Réglages › Accessibilité › Mouvement › Réduire les animations" },
+    { id: "s-transp", t: "Réduire la transparence", s: "Réglages › Accessibilité › Affichage et taille du texte" },
+    { id: "s-refresh", t: "Limiter l'actualisation en arrière-plan", s: "Réglages › Général › Actualisation en arrière-plan › Wi-Fi, ou désactive app par app" },
+    { id: "s-free", t: "Garder au moins 10 % d'espace libre", s: "En dessous, iOS ralentit pour gérer la mémoire" },
+    { id: "s-restart", t: "Redémarrer une fois par semaine", s: "Vide la mémoire vive et relance les services bloqués" }
+  ];
+
+  var IDEAS = [
+    { t: "Webcam pour Mac", p: "Caméra de continuité, intégrée à macOS et iOS 16 ou plus récent." },
+    { t: "Caméra de surveillance", p: "Une app de vidéosurveillance, l'iPhone sur secteur face à l'entrée." },
+    { t: "Lecteur de musique", p: "Sans carte SIM, en Wi-Fi, branché à une enceinte ou dans la cuisine." },
+    { t: "Réveil de chevet", p: "Mode Veille (StandBy) d'iOS 17 en charge, posé à l'horizontale." },
+    { t: "Télécommande de la maison", p: "App Maison, télécommande Apple TV, enceintes connectées." },
+    { t: "GPS de voiture", p: "Cartes téléchargées hors ligne dans Plans, laissé dans la voiture." },
+    { t: "Premier téléphone d'enfant", p: "Temps d'écran et partage familial pour encadrer l'usage." },
+    { t: "Liseuse et livres audio", p: "Livres, Audible ou bibliothèque publique, en mode Avion." }
+  ];
+
+  var HANDOVER = [
+    { id: "h-backup", t: "Sauvegarder", s: "Réglages › [ton nom] › iCloud › Sauvegarde iCloud › Sauvegarder maintenant" },
+    { id: "h-watch", t: "Dissocier l'Apple Watch", s: "App Watch › Toutes les montres › (i) › Dissocier" },
+    { id: "h-signout", t: "Se déconnecter du compte Apple", s: "Réglages › [ton nom] › Se déconnecter. Désactive aussi Localiser" },
+    { id: "h-erase", t: "Effacer contenu et réglages", s: "Réglages › Général › Transférer ou réinitialiser l'iPhone" },
+    { id: "h-sim", t: "Retirer la carte SIM ou l'eSIM", s: "Contacte ton opérateur pour transférer l'eSIM sur le nouveau téléphone" },
+    { id: "h-device", t: "Retirer l'iPhone de ta liste d'appareils", s: "Depuis un autre appareil : Réglages › [ton nom] › l'iPhone › Supprimer de ce compte" }
+  ];
+
+  // --- État ------------------------------------------------------------
+  var KEY = "place-nette-v1";
+  var state = load();
+
+  function load() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { s = null; }
+    var base = { data: Object.assign({}, EXAMPLE), done: {}, checks: {}, freeAfter: "", battery: "" };
+    if (!s || !s.data) return base;
+    return Object.assign(base, s, { data: Object.assign({}, EXAMPLE, s.data) });
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* stockage indisponible : l'app fonctionne sans */ }
+  }
+
+  // --- Calculs ---------------------------------------------------------
+  function fmt(n, digits) {
+    if (!isFinite(n)) n = 0;
+    return n.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: digits == null ? 1 : digits });
+  }
+  function used(d) {
+    return CATS.reduce(function (s, c) { return s + (Number(d[c.id]) || 0); }, 0);
+  }
+  function free(d) { return Math.max(0, d.capacity - used(d)); }
+  function target(d) { return d.capacity * 0.15; }
+
+  function plan(d) {
+    var list = TASKS.filter(function (t) { return !t.when || t.when(d); }).map(function (t) {
+      return { t: t, gain: Math.max(0, t.gain(d)) };
+    });
+    // Le gain cumulé ne peut pas dépasser l'espace réellement compressible
+    var cap = Math.max(0, used(d) - (Number(d.ios) || 0));
+    var total = list.reduce(function (s, x) { return s + x.gain; }, 0);
+    if (total > cap && total > 0) {
+      var k = cap / total;
+      list.forEach(function (x) { x.gain *= k; });
+    }
+    list.sort(function (a, b) { return b.gain - a.gain; });
+    return list;
+  }
+
+  function status(d) {
+    var pct = d.capacity ? free(d) / d.capacity : 0;
+    if (pct < 0.05) return { label: "Saturé", cls: "crit" };
+    if (pct < 0.10) return { label: "Serré", cls: "warn" };
+    if (pct < 0.20) return { label: "Correct", cls: "" };
+    return { label: "En forme", cls: "ok" };
+  }
+
+  // --- Rendu -----------------------------------------------------------
+  var $ = function (id) { return document.getElementById(id); };
+  function el(tag, attrs, html) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+
+  function renderCapacity() {
+    var box = $("capacity");
+    box.innerHTML = "";
+    CAPACITIES.forEach(function (c) {
+      var b = el("button", { type: "button", "aria-pressed": String(state.data.capacity === c) }, c >= 1024 ? "1 To" : c + " Go");
+      b.addEventListener("click", function () { state.data.capacity = c; touched(); renderAll(); });
+      box.appendChild(b);
+    });
+  }
+
+  function renderIcloud() {
+    var box = $("icloud");
+    box.innerHTML = "";
+    [["oui", "Oui"], ["non", "Non ou pas de place"]].forEach(function (o) {
+      var b = el("button", { type: "button", "aria-pressed": String(state.data.icloud === o[0]) }, o[1]);
+      b.style.fontFamily = "var(--font-body)";
+      b.addEventListener("click", function () { state.data.icloud = o[0]; touched(); renderAll(); });
+      box.appendChild(b);
+    });
+  }
+
+  function renderFields() {
+    var box = $("fields");
+    box.innerHTML = "";
+    CATS.forEach(function (c) {
+      var row = el("div", { "class": "field" });
+      row.innerHTML =
+        '<span class="dot" style="background:var(' + c.color + ')"></span>' +
+        '<label for="f-' + c.id + '">' + c.label + "<small>" + c.hint + "</small></label>" +
+        '<div class="input-go"><input id="f-' + c.id + '" type="number" inputmode="decimal" min="0" step="0.1"><span>Go</span></div>';
+      var input = row.querySelector("input");
+      input.value = state.data[c.id];
+      input.addEventListener("input", function () {
+        var v = parseFloat(String(input.value).replace(",", "."));
+        state.data[c.id] = isFinite(v) && v >= 0 ? v : 0;
+        touched();
+        renderGauge(); renderPlan(); renderStatus();
+      });
+      box.appendChild(row);
+    });
+  }
+
+  function touched() {
+    if (state.data.example) {
+      state.data.example = false;
+      $("example-notice").hidden = true;
+    }
+    save();
+  }
+
+  function renderGauge() {
+    var d = state.data;
+    var cap = d.capacity || 1;
+    var bar = $("g-bar");
+    bar.innerHTML = "";
+    CATS.forEach(function (c) {
+      var w = Math.min(100, (Number(d[c.id]) || 0) / cap * 100);
+      if (w <= 0) return;
+      var s = el("span");
+      s.style.width = w + "%";
+      s.style.background = "var(" + c.color + ")";
+      bar.appendChild(s);
+    });
+    var u = Math.min(used(d), cap);
+    var potential = plan(d).reduce(function (s, x) { return s + x.gain; }, 0);
+    var r = el("span", { "class": "reclaim" });
+    var rw = Math.min(potential, u) / cap * 100;
+    r.style.left = (u / cap * 100 - rw) + "%";
+    r.style.width = rw + "%";
+    bar.appendChild(r);
+
+    $("g-free").textContent = fmt(free(d));
+    $("g-cap").textContent = cap >= 1024 ? "1024" : cap;
+    var legend = $("g-legend");
+    legend.innerHTML = CATS.map(function (c) {
+      return '<span><i style="background:var(' + c.color + ')"></i>' + c.label + "</span>";
+    }).join("") + '<span><i class="hatch"></i>Récupérable</span>';
+    $("g-projection").innerHTML = "Après le plan : environ <strong class=\"num\">" + fmt(free(d) + potential) + " Go</strong> libres. Objectif conseillé : " + fmt(target(d), 0) + " Go, soit 15 % de la capacité.";
+    bar.setAttribute("aria-label", fmt(u) + " Go utilisés sur " + cap + " Go, environ " + fmt(potential) + " Go récupérables");
+  }
+
+  function renderStatus() {
+    var s = status(state.data);
+    var chip = $("status-chip");
+    chip.className = "chip " + s.cls;
+    chip.textContent = s.label;
+  }
+
+  function renderPlan() {
+    var d = state.data;
+    var list = plan(d);
+    var potential = list.reduce(function (s, x) { return s + x.gain; }, 0);
+    var done = list.reduce(function (s, x) { return s + (state.done[x.t.id] ? x.gain : 0); }, 0);
+    $("p-potential").textContent = fmt(potential, 0);
+    $("s-before").textContent = fmt(free(d)) + " Go";
+    $("s-done").textContent = fmt(done) + " Go";
+    $("s-target").textContent = fmt(target(d), 0) + " Go";
+    $("s-progress").style.width = (potential ? done / potential * 100 : 0) + "%";
+
+    var box = $("tasks");
+    box.innerHTML = "";
+    list.forEach(function (x) {
+      var t = x.t;
+      var cat = CATS.filter(function (c) { return c.id === t.cat; })[0];
+      var risk = RISK[t.risk];
+      var card = el("article", { "class": "task" + (state.done[t.id] ? " done" : "") });
+      card.innerHTML =
+        '<div class="task-head">' +
+          '<input class="check" type="checkbox" id="t-' + t.id + '" aria-label="Marquer comme fait : ' + t.title.replace(/"/g, "&quot;") + '"' + (state.done[t.id] ? " checked" : "") + ">" +
+          '<div class="task-body">' +
+            "<h3>" + t.title + "</h3>" +
+            '<p class="path">' + t.path + "</p>" +
+            '<p class="small muted"><span class="cat-dot" style="background:var(' + cat.color + ')"></span>' + cat.label + "</p>" +
+          "</div>" +
+          '<div class="gain"><span class="num">≈ ' + fmt(x.gain) + ' Go</span><span class="chip ' + risk.cls + '">' + risk.label + "</span></div>" +
+        "</div>" +
+        '<details class="steps"><summary>Comment faire</summary>' +
+          '<p class="why small">' + t.why + "</p>" +
+          "<ol>" + t.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
+        "</details>";
+      card.querySelector(".check").addEventListener("change", function (e) {
+        if (e.target.checked) state.done[t.id] = true; else delete state.done[t.id];
+        save();
+        renderPlan();
+      });
+      box.appendChild(card);
+    });
+    renderAfter();
+  }
+
+  function renderAfter() {
+    var out = $("after-result");
+    var v = parseFloat(String(state.freeAfter).replace(",", "."));
+    if (!isFinite(v) || state.freeAfter === "") { out.hidden = true; return; }
+    var before = free(state.data);
+    var diff = v - before;
+    out.hidden = false;
+    var tgt = target(state.data);
+    var msg = diff > 0
+      ? "<strong class=\"num\">+" + fmt(diff) + " Go</strong> récupérés, de " + fmt(before) + " à " + fmt(v) + " Go libres."
+      : "Pas encore de gain mesuré. iOS met parfois quelques heures à recalculer : vérifie à nouveau demain.";
+    msg += v >= tgt
+      ? " <span class=\"chip ok\">Objectif atteint</span>"
+      : " <span class=\"chip warn\">Encore " + fmt(tgt - v) + " Go pour l'objectif</span>";
+    out.innerHTML = msg;
+  }
+
+  function renderRecipes() {
+    $("recipes").innerHTML = RECIPES.map(function (r) {
+      return '<article class="recipe"><h3>' + r.title + '</h3><p class="small muted">' + r.desc + "</p><ol>" +
+        r.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol></article>";
+    }).join("");
+  }
+
+  function renderChecklist(boxId, items) {
+    var box = $(boxId);
+    box.innerHTML = "";
+    items.forEach(function (it) {
+      var lab = el("label", { "for": it.id });
+      lab.innerHTML = '<input class="check" type="checkbox" id="' + it.id + '"' + (state.checks[it.id] ? " checked" : "") + "><span>" + it.t + "<small>" + it.s + "</small></span>";
+      lab.querySelector("input").addEventListener("change", function (e) {
+        if (e.target.checked) state.checks[it.id] = true; else delete state.checks[it.id];
+        save();
+      });
+      box.appendChild(lab);
+    });
+  }
+
+  function renderIdeas() {
+    $("ideas").innerHTML = IDEAS.map(function (i) {
+      return '<div class="idea"><h3>' + i.t + "</h3><p>" + i.p + "</p></div>";
+    }).join("");
+  }
+
+  function renderBattery() {
+    var v = parseFloat(state.battery);
+    var out = $("battery-verdict");
+    if (!isFinite(v)) {
+      out.className = "verdict small muted";
+      out.textContent = "Note ta valeur pour savoir si la batterie mérite d'être changée.";
+      return;
+    }
+    var html;
+    if (v >= 85) html = '<span><span class="chip ok">Bonne santé</span></span><span>La batterie n\'est pas en cause. Si l\'iPhone rame, regarde plutôt l\'espace libre et la fluidité.</span>';
+    else if (v >= 80) html = '<span><span class="chip warn">À surveiller</span></span><span>Encore correcte. Évite les charges à 100 % la nuit : active la recharge optimisée dans le même écran.</span>';
+    else html = '<span><span class="chip crit">Remplacement conseillé</span></span><span>Sous 80 %, iOS peut brider les performances. Un changement de batterie chez Apple ou un réparateur agréé redonne souvent des années à l\'iPhone.</span>';
+    out.className = "verdict small";
+    out.innerHTML = html;
+  }
+
+  function renderAll() {
+    renderCapacity();
+    renderIcloud();
+    renderGauge();
+    renderStatus();
+    renderPlan();
+  }
+
+  // --- Navigation ------------------------------------------------------
+  var VIEWS = ["diagnostic", "plan", "raccourcis", "seconde-vie"];
+  function route() {
+    var h = (location.hash || "").replace("#", "");
+    if (VIEWS.indexOf(h) === -1) h = "diagnostic";
+    VIEWS.forEach(function (v) { $("view-" + v).hidden = v !== h; });
+    document.querySelectorAll(".tabbar a").forEach(function (a) {
+      if (a.getAttribute("data-tab") === h) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+    window.scrollTo(0, 0);
+  }
+
+  // --- Démarrage -------------------------------------------------------
+  $("example-notice").hidden = !state.data.example;
+  renderFields();
+  renderAll();
+  renderRecipes();
+  renderIdeas();
+  renderChecklist("smooth", SMOOTH);
+  renderChecklist("handover", HANDOVER);
+
+  var fa = $("free-after");
+  fa.value = state.freeAfter;
+  fa.addEventListener("input", function () { state.freeAfter = fa.value; save(); renderAfter(); });
+
+  var bat = $("battery");
+  bat.value = state.battery;
+  bat.addEventListener("input", function () { state.battery = bat.value; save(); renderBattery(); });
+  renderBattery();
+
+  window.addEventListener("hashchange", route);
+  route();
+})();
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+}
+</script>
+</body>
+</html>
