@@ -207,6 +207,12 @@ details.steps ol { padding-left: 76px; display: grid; gap: 6px; }
 .checklist small { display: block; color: var(--muted); font-size: 0.82rem; }
 .verdict { display: grid; gap: 6px; }
 footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
+.scan-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.scan-table td { padding: 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.scan-table td:last-child { text-align: right; white-space: nowrap; }
+.scan-table small { display: block; color: var(--muted); font-size: 0.78rem; }
+.scan-bar { display: block; margin-top: 8px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.scan-bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s linear; }
 
 /* Barre d'onglets */
 .tabbar {
@@ -261,6 +267,17 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
       <div class="bar" id="g-bar" role="img" aria-label="Répartition du stockage"></div>
       <div class="legend" id="g-legend"></div>
       <p class="small muted" id="g-projection"></p>
+    </div>
+
+    <div class="card" id="scan-card">
+      <div class="stack">
+        <h2>Remplir avec des captures</h2>
+        <p class="small muted">Ouvre <strong>Réglages › Général › Stockage iPhone</strong> et attends la fin du calcul. Fais une capture du haut de l'écran, puis fais défiler la liste et capture-la jusqu'en bas : iOS et Données système sont tout à la fin.</p>
+      </div>
+      <label class="btn ghost" for="scan-input">Choisir les captures d'écran</label>
+      <input id="scan-input" type="file" accept="image/*" multiple hidden>
+      <p class="small muted" id="scan-status" hidden></p>
+      <div id="scan-review" class="stack" hidden></div>
     </div>
 
     <div class="notice" id="example-notice">
@@ -840,6 +857,266 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
     renderStatus();
     renderPlan();
   }
+
+  // --- Lecture des captures d'écran ------------------------------------
+  // La reconnaissance de texte (Tesseract.js) tourne dans le navigateur, avec des fichiers servis
+  // à côté de la page : les captures ne quittent jamais l'iPhone.
+  var OCR_DIR = new URL("vendor/ocr/", location.href).href;
+  var OCR_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+  var UNIT_GO = { to: 1000, tb: 1000, go: 1, gb: 1, co: 1, "6o": 1, mo: 0.001, mb: 0.001, ko: 0.000001, kb: 0.000001 };
+  // « Co » et « 6o » : confusions fréquentes de la lecture pour « Go »
+  var SIZE_RE = /(\d{1,4}(?:[.,]\d{1,2})?)\s*(To|Go|Co|6o|Mo|Ko|TB|GB|MB|KB)\b/i;
+  var HEADER_RE = /(\d{1,4}(?:[.,]\d{1,2})?)\s*(Go|GB|To|TB)\s*(?:sur|of)\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(Go|GB|To|TB)/i;
+  var SKIP_RE = /(conomis|gagn|save|lib[eé]r|recommand|jusqu|taille de l|documents et)/i;
+  var SUBTITLE_RE = /(derni[eè]re utilisation|jamais utilis|last used|never used)/i;
+  var KEEP_SHORT = ["tv"];
+  var MEDIA_NAMES = ["musique", "music", "podcasts", "tv", "apple tv"];
+  var OTHER_NAMES = ["mail", "icloud drive", "livres", "books"];
+
+  function toGo(num, unit) {
+    return parseFloat(num.replace(",", ".")) * (UNIT_GO[unit.toLowerCase()] || 0);
+  }
+  function plain(s) {
+    return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  }
+  function classify(name) {
+    var n = plain(name);
+    if (/^(donnees systeme|system data)/.test(n)) return "system";
+    if (/^ios( \d+)?$/.test(n)) return "ios";
+    if (n === "photos") return "photos";
+    if (n === "messages") return "messages";
+    if (MEDIA_NAMES.indexOf(n) !== -1) return "medias";
+    if (OTHER_NAMES.indexOf(n) !== -1) return "other";
+    return "apps";
+  }
+
+  // Retire les bouts de texte parasites lus sur les icônes et les chevrons (« B Instagram », « TikTok 14 »).
+  function cleanName(s) {
+    var words = s.replace(/^[^A-Za-zÀ-ÿ]+/, "").replace(/[\s>›.,:;-]+$/, "").split(" ").filter(Boolean);
+    function noise(w) { return w.length <= 2 && KEEP_SHORT.indexOf(w.toLowerCase()) === -1; }
+    while (words.length > 1 && noise(words[0])) words.shift();
+    while (words.length > 1 && noise(words[words.length - 1])) words.pop();
+    return words.join(" ");
+  }
+
+  // Transforme le texte reconnu sur une ou plusieurs captures en valeurs par catégorie.
+  function parseStorage(texts) {
+    var res = { used: null, capacity: null, items: {} };
+    var pending = null; // nom lu sur une ligne sans taille, en attente de sa taille sur la ligne suivante
+    var orphan = null; // taille lue sans nom lisible
+    texts.join("\n").split(/\n+/).forEach(function (raw) {
+      var line = raw.replace(/[|©®@*•»«]/g, " ").replace(/\s+/g, " ").trim();
+      if (!line) return;
+      var h = line.match(HEADER_RE);
+      if (h) {
+        res.used = toGo(h[1], h[2]);
+        res.capacity = toGo(h[3], h[4]);
+        pending = null;
+        return;
+      }
+      if (SKIP_RE.test(line)) { pending = null; return; }
+      var m = line.match(SIZE_RE);
+      if (!m) {
+        if (!SUBTITLE_RE.test(line)) pending = cleanName(line);
+        return;
+      }
+      // La taille est centrée sur la ligne de l'app : elle peut tomber sur la ligne « Dernière utilisation »
+      var before = line.slice(0, m.index);
+      var name = SUBTITLE_RE.test(before) ? pending : cleanName(before);
+      pending = null;
+      var go = toGo(m[1], m[2]);
+      var cat = name ? classify(name) : "apps";
+      // Nom illisible : on le garde de côté, iOS est la ligne juste avant « Données système »
+      if (!name || (plain(name).length <= 3 && cat === "apps")) { orphan = go; return; }
+      if (cat === "system" && orphan != null && !res.items.ios) res.items.ios = { name: "iOS", go: orphan, cat: "ios" };
+      orphan = null;
+      var key = plain(name);
+      if (!res.items[key] || res.items[key].go < go) res.items[key] = { name: name, go: go, cat: cat };
+    });
+
+    var sums = { apps: 0, photos: 0, messages: 0, medias: 0, ios: 0, system: 0, other: 0 };
+    var counts = { apps: 0 };
+    Object.keys(res.items).forEach(function (k) {
+      var it = res.items[k];
+      sums[it.cat] += it.go;
+      if (it.cat === "apps") counts.apps++;
+    });
+    if (res.capacity) {
+      // Capacité commerciale la plus proche (iOS affiche 128 Go, pas 127,9)
+      res.capacity = CAPACITIES.reduce(function (best, c) {
+        return Math.abs(c - res.capacity) < Math.abs(best - res.capacity) ? c : best;
+      }, CAPACITIES[0]);
+    }
+    // Les apps qui n'apparaissent pas sur les captures sont déduites de l'espace utilisé
+    var known = sums.photos + sums.messages + sums.medias + sums.ios + sums.system + sums.other;
+    res.appsFromUsed = false;
+    if (res.used != null && res.used - known > sums.apps) {
+      sums.apps = res.used - known;
+      res.appsFromUsed = true;
+    }
+    res.sums = sums;
+    res.appCount = counts.apps;
+    return res;
+  }
+
+  var ocrLib = null;
+  function loadOcr() {
+    if (ocrLib) return ocrLib;
+    ocrLib = new Promise(function (resolve, reject) {
+      function add(src, next) {
+        var s = document.createElement("script");
+        s.src = src;
+        s.onload = function () { window.Tesseract ? resolve(window.Tesseract) : next(); };
+        s.onerror = next;
+        document.head.appendChild(s);
+      }
+      add(OCR_DIR + "tesseract.min.js", function () {
+        add(OCR_CDN, function () { reject(new Error("load")); });
+      });
+    });
+    ocrLib.catch(function () { ocrLib = null; });
+    return ocrLib;
+  }
+
+  // Niveaux de gris et inversion des captures en mode sombre : la reconnaissance lit mieux du noir sur blanc.
+  function prepareImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var scale = Math.min(1, 1400 / img.naturalWidth);
+        var c = document.createElement("canvas");
+        c.width = Math.round(img.naturalWidth * scale);
+        c.height = Math.round(img.naturalHeight * scale);
+        var ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        var px = ctx.getImageData(0, 0, c.width, c.height);
+        var d = px.data, sum = 0, i, g;
+        for (i = 0; i < d.length; i += 4) {
+          g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          d[i] = d[i + 1] = d[i + 2] = g;
+          sum += g;
+        }
+        var invert = sum / (d.length / 4) < 110;
+        // Noir et blanc francs : les fonds gris des cellules iOS gênent la lecture
+        for (i = 0; i < d.length; i += 4) {
+          g = invert ? 255 - d[i] : d[i];
+          d[i] = d[i + 1] = d[i + 2] = g > 200 ? 255 : 0;
+        }
+        ctx.putImageData(px, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(c);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("image")); };
+      img.src = url;
+    });
+  }
+
+  var scanResult = null;
+
+  function scanStatus(html) {
+    var st = $("scan-status");
+    st.hidden = !html;
+    st.innerHTML = html || "";
+  }
+
+  function runScan(files) {
+    if (!files.length) return;
+    $("scan-review").hidden = true;
+    var progress = '<span class="scan-bar"><span id="scan-progress"></span></span>';
+    scanStatus("Préparation de la lecture… La première fois, l'app télécharge environ 5 Mo." + progress);
+    var current = 0;
+    var worker;
+    loadOcr().then(function (T) {
+      return T.createWorker("fra", 1, {
+        workerPath: OCR_DIR + "worker-wrapper.js",
+        workerBlobURL: false,
+        corePath: OCR_DIR.replace(/\/$/, ""),
+        langPath: OCR_DIR.replace(/\/$/, ""),
+        logger: function (m) {
+          var bar = document.getElementById("scan-progress");
+          if (bar && m.status === "recognizing text") bar.style.width = ((current + m.progress) / files.length * 100) + "%";
+        }
+      });
+    }).then(function (w) {
+      worker = w;
+      return worker.setParameters({ tessedit_pageseg_mode: "6" });
+    }).then(function () {
+      var texts = [];
+      return files.reduce(function (p, file, i) {
+        return p.then(function () {
+          current = i;
+          scanStatus("Lecture de la capture " + (i + 1) + " sur " + files.length + "…" + progress);
+          return prepareImage(file).then(function (canvas) { return worker.recognize(canvas); })
+            .then(function (r) { texts.push(r.data.text); });
+        });
+      }, Promise.resolve()).then(function () { return texts; });
+    }).then(function (texts) {
+      worker.terminate();
+      scanResult = parseStorage(texts);
+      scanStatus("");
+      renderScanReview();
+    }).catch(function () {
+      if (worker) worker.terminate();
+      scanStatus("La lecture n'a pas pu démarrer. Vérifie ta connexion pour le premier téléchargement, puis réessaie. Tu peux aussi remplir les champs à la main.");
+    });
+  }
+
+  function renderScanReview() {
+    var r = scanResult;
+    var box = $("scan-review");
+    box.hidden = false;
+    var found = Object.keys(r.items).length;
+    if (!found && r.used == null) {
+      box.innerHTML = '<p class="small">Aucun chiffre reconnu. Vérifie que les captures montrent bien l\'écran Stockage iPhone, une fois le calcul terminé.</p>';
+      return;
+    }
+    var rows = CATS.map(function (c) {
+      var v = r.sums[c.id];
+      var note = "";
+      if (c.id === "apps") note = r.appsFromUsed ? "Déduit de l'espace utilisé" : r.appCount + " apps lues";
+      if (!v && c.id !== "apps") note = "Non trouvé sur les captures";
+      return "<tr><td><span class=\"cat-dot\" style=\"background:var(" + c.color + ")\"></span>" + c.label +
+        (note ? "<small>" + note + "</small>" : "") + "</td><td class=\"num\">" + (v ? fmt(v) + " Go" : "—") + "</td></tr>";
+    }).join("");
+    var head = r.capacity
+      ? "<p class=\"small\">Capacité : <strong class=\"num\">" + (r.capacity >= 1024 ? "1 To" : r.capacity + " Go") + "</strong>" +
+        (r.used != null ? ", dont <strong class=\"num\">" + fmt(r.used) + " Go</strong> utilisés." : ".") + "</p>"
+      : "<p class=\"small muted\">Capacité non trouvée : ajoute la capture du haut de l'écran, ou choisis-la plus bas.</p>";
+    box.innerHTML = "<h3>Vérifie avant d'appliquer</h3>" + head +
+      '<div style="overflow-x:auto"><table class="scan-table"><tbody>' + rows + "</tbody></table></div>" +
+      '<details class="small"><summary>Voir les ' + found + " lignes lues</summary>" +
+        '<table class="scan-table"><tbody>' + Object.keys(r.items).map(function (k) {
+          var it = r.items[k];
+          return "<tr><td>" + it.name.replace(/</g, "&lt;") + "</td><td class=\"num\">" + fmt(it.go, 2) + " Go</td></tr>";
+        }).join("") + "</tbody></table>" +
+        '<p class="muted">La lecture peut confondre une virgule : si un chiffre est faux, corrige le champ après avoir appliqué.</p>' +
+      "</details>" +
+      '<div class="row"><button type="button" class="btn small-btn" id="scan-apply">Appliquer ces valeurs</button>' +
+      '<button type="button" class="btn ghost small-btn" id="scan-cancel">Ignorer</button></div>';
+    $("scan-apply").addEventListener("click", applyScan);
+    $("scan-cancel").addEventListener("click", function () { box.hidden = true; scanResult = null; });
+  }
+
+  function applyScan() {
+    var r = scanResult;
+    if (r.capacity) state.data.capacity = r.capacity;
+    CATS.forEach(function (c) {
+      if (r.sums[c.id] || c.id === "apps") state.data[c.id] = Math.round(r.sums[c.id] * 10) / 10;
+    });
+    touched();
+    renderFields();
+    renderAll();
+    $("scan-review").innerHTML = '<p class="small"><span class="chip ok">Valeurs appliquées</span> Corrige un champ si un chiffre te paraît faux.</p>';
+    scanResult = null;
+  }
+
+  $("scan-input").addEventListener("change", function (e) {
+    var files = Array.prototype.slice.call(e.target.files || []);
+    e.target.value = "";
+    runScan(files);
+  });
+  window.PlaceNette = { parseStorage: parseStorage };
 
   // --- Navigation ------------------------------------------------------
   var VIEWS = ["diagnostic", "plan", "raccourcis", "seconde-vie"];
