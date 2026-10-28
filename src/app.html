@@ -291,7 +291,7 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
     <div class="card" id="lib-card">
       <div class="stack">
         <h2>Ta photothèque</h2>
-        <p class="small muted">Lance le raccourci <strong>Analyser mon iPhone</strong>, puis colle ici le texte qu'il a copié. <a href="#raccourcis">Créer le raccourci</a></p>
+        <p class="small muted">Lance le raccourci <strong>Analyser mon iPhone</strong>, puis colle ici le texte qu'il a copié. La lecture se fait dès le collage. <a href="#raccourcis">Créer le raccourci</a></p>
       </div>
       <textarea id="lib-input" class="text-area" rows="2" placeholder="PLACENETTE photos=… videos=…"></textarea>
       <div class="row"><button type="button" class="btn small-btn" id="lib-read">Lire le résultat</button></div>
@@ -564,19 +564,19 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
   var RECIPES = [
     {
       title: "Analyser mon iPhone",
-      desc: "Compte tes photos, vidéos et captures d'écran, puis copie le résultat pour Place Nette. À créer une fois, à lancer quand tu veux. Pour les ajouter, cherche le nom de chaque action dans la barre de recherche en bas de l'éditeur.",
+      desc: "Compte tes photos et tes vidéos, puis copie le résultat pour Place Nette. À créer une fois, en 10 minutes environ. Pour ajouter une action, tape son nom dans la barre Rechercher en bas de l'éditeur et touche-la : elle se place toujours en dernier.",
       steps: [
-        "Ouvre Raccourcis, touche <strong>+</strong> et renomme le raccourci « Analyser mon iPhone ».",
-        "Ajoute <span class=\"action-name\">Rechercher des photos</span> sans filtre, puis <span class=\"action-name\">Compter</span>, puis <span class=\"action-name\">Définir une variable</span> nommée <em>Photos</em>.",
-        "Ajoute à nouveau <span class=\"action-name\">Rechercher des photos</span> avec le filtre <em>Type de média</em> est <em>Vidéo</em>, puis <span class=\"action-name\">Compter</span> et <span class=\"action-name\">Définir une variable</span> <em>Videos</em>.",
-        "Même chose avec le filtre <em>Est une capture d'écran</em> est <em>vrai</em> : variable <em>Captures</em>.",
-        "Même chose avec deux filtres, <em>Est une capture d'écran</em> est <em>vrai</em> et <em>Date de création</em> n'est pas dans les <em>30 derniers jours</em> : variable <em>Vieilles</em>.",
-        "Ajoute <span class=\"action-name\">Obtenir les détails de l'appareil</span> et choisis <em>Version du système</em>.",
-        "Ajoute l'action <span class=\"action-name\">Texte</span> et écris le modèle ci-dessous. À la place de chaque <em>[…]</em>, touche la variable du même nom dans la barre au-dessus du clavier.",
-        "Ajoute <span class=\"action-name\">Copier dans le presse-papiers</span>, puis <span class=\"action-name\">Afficher une notification</span> avec « Résultat copié, colle-le dans Place Nette ».",
-        "Lance le raccourci et autorise l'accès à Photos. Avec beaucoup de photos, le comptage prend quelques secondes."
+        "Ouvre Raccourcis, touche le bouton <strong>+</strong>, puis touche le titre › <strong>Renommer</strong> : « Analyser mon iPhone ».",
+        "Ajoute <span class=\"action-name\">Rechercher des photos</span> sans filtre, puis <span class=\"action-name\">Compter</span>, puis <span class=\"action-name\">Définir une variable</span> : touche « Nom de la variable » et tape <em>Photos</em>.",
+        "Ajoute à nouveau <span class=\"action-name\">Rechercher des photos</span>. <strong>Piège :</strong> si le bloc affiche « Filtrer <em>Photos</em> » avec un carré orange, touche ce mot <em>Photos</em> › <strong>Effacer la variable</strong>. Le bloc doit afficher « Rechercher Photos ».",
+        "Dans ce bloc, touche <strong>Ajouter un filtre</strong>, touche <em>Album</em> › <em>Type de fichier multimédia</em> (ou <em>Type de média</em>), puis le dernier mot › <em>Vidéo</em>.",
+        "Ajoute <span class=\"action-name\">Compter</span>, puis <span class=\"action-name\">Définir une variable</span> nommée <em>Videos</em>, sans accent. Ne touche pas aux mots « Nombre » des blocs déjà faits.",
+        "Ajoute <span class=\"action-name\">Texte</span>. Tape <em>PLACENETTE photos=</em>, touche <em>Photos</em> dans la barre au-dessus du clavier, tape un espace et <em>videos=</em>, touche <em>Videos</em>. Écris d'un trait, sans toucher au milieu du texte : sinon le curseur se déplace.",
+        "Ajoute <span class=\"action-name\">Copier dans le presse-papiers</span>, puis touche ▶. Le résultat s'affiche sous le dernier bloc.",
+        "Si iOS refuse de « partager des éléments Photos » : Réglages › Apps › Raccourcis › Avancé › active <strong>Autoriser le partage de grandes quantités de données</strong>. Seuls les deux nombres sont copiés.",
+        "Colle le résultat dans Place Nette, onglet Diagnostic, carte Ta photothèque."
       ],
-      template: "PLACENETTE photos=[Photos] videos=[Videos] captures=[Captures] vieilles=[Vieilles] ios=[Version du système]"
+      template: "PLACENETTE photos=[Photos] videos=[Videos]"
     },
     {
       title: "Ménage des captures d'écran",
@@ -1111,7 +1111,7 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
       return v == null ? "" : '<div><span class="eyebrow">' + label + '</span><span class="num">' + v + "</span></div>";
     }
     box.innerHTML = '<div class="lib-grid">' +
-      tile("Photos et vidéos", lib.photos != null ? fmt(lib.photos, 0) : null) +
+      tile("Éléments dans Photos", lib.photos != null ? fmt(lib.photos, 0) : null) +
       tile("Vidéos", lib.videos != null ? fmt(lib.videos, 0) : null) +
       tile("Captures d'écran", lib.screens != null ? fmt(lib.screens, 0) : null) +
       tile("iOS", lib.ios || null) + "</div>" +

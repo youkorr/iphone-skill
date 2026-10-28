@@ -6,7 +6,7 @@ Web app pour iPhone qui aide à **libérer du stockage** et à **donner une seco
 
 - **Diagnostic** : tu ajoutes des captures d'écran de *Réglages › Général › Stockage iPhone* (ou tu recopies les chiffres), l'app affiche la barre de stockage et l'espace récupérable.
 - **Plan de nettoyage** : actions triées par gain estimé, avec le chemin exact dans les Réglages, le niveau de risque et les étapes. Mesure avant/après.
-- **Raccourcis** : recettes pas-à-pas pour l'app Raccourcis. « Analyser mon iPhone » compte photos, vidéos et captures d'écran et copie un résultat (`PLACENETTE photos=… videos=… captures=… vieilles=… ios=…`) à coller dans le Diagnostic ; la version installée accepte aussi `?r=<résultat>` dans l'adresse. Les autres recettes : ménage des captures, vidéos lourdes, rappel mensuel, économie d'énergie.
+- **Raccourcis** : recettes pas-à-pas pour l'app Raccourcis. « Analyser mon iPhone » compte photos et vidéos et copie un résultat (`PLACENETTE photos=… videos=…`, les clés `captures=`, `vieilles=` et `ios=` sont aussi lues si présentes) à coller dans le Diagnostic ; la version installée accepte aussi `?r=<résultat>` dans l'adresse. Les autres recettes : ménage des captures, vidéos lourdes, rappel mensuel, économie d'énergie.
 - **Seconde vie** : santé de la batterie, réglages de fluidité, idées de reconversion, checklist avant revente ou don.
 
 Rien n'est envoyé : les données restent dans le navigateur de l'iPhone (`localStorage`). Une fois installée, l'app fonctionne hors ligne.
