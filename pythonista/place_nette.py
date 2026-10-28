@@ -5,9 +5,12 @@
 import base64
 import datetime
 import html
+import io
 import json
 import os
 import shutil
+import threading
+import time
 import traceback
 import urllib.parse
 
@@ -15,7 +18,7 @@ import photos
 import ui
 from objc_util import ObjCClass, ObjCInstance, create_objc_class, ns, nsurl, on_main_thread
 
-VERSION = "1.1"
+VERSION = "1.2"
 TOP_VIDEOS = 30
 MAX_SCREEN_THUMBS = 60
 MAX_DUP_GROUPS = 40
@@ -130,13 +133,25 @@ def thumb(asset):
     return _thumbs[asset.local_id]
 
 
+_thumb_errors = []
+
+
 def _make_thumb(asset):
     try:
         img = asset.get_ui_image(size=THUMB_SIZE, crop=True)
         if img:
             return "data:image/png;base64," + base64.b64encode(img.to_png()).decode()
-    except Exception:
-        pass
+        _thumb_errors.append("get_ui_image a renvoyé None")
+    except Exception as e:
+        _thumb_errors.append("get_ui_image : " + repr(e))
+    try:
+        pil = asset.get_image(original=False)
+        pil.thumbnail((THUMB_SIZE[0] * 2, THUMB_SIZE[1] * 2))
+        buf = io.BytesIO()
+        pil.convert("RGB").save(buf, "JPEG", quality=70)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        _thumb_errors.append("get_image : " + repr(e))
     return ""
 
 
@@ -323,10 +338,16 @@ function fmtSize(b) {
 function tog(el) { var id = el.dataset.id; sel.has(id) ? sel.delete(id) : sel.add(id); upd(); }
 function pick(key) { (GROUPS[key] || []).forEach(function (id) { sel.add(id); }); upd(); }
 function clearSel() { sel.clear(); upd(); }
-function go(u) { location.href = 'placenette://open?u=' + encodeURIComponent(u); }
+var Q = [];
+function act(a) { Q.push(a); }
+function takeActions() { var r = JSON.stringify(Q); Q = []; return r; }
+function go(u) { act({t: 'open', u: u}); }
 function del() {
   if (!sel.size) return;
-  location.href = 'placenette://delete?ids=' + encodeURIComponent(JSON.stringify(Array.from(sel)));
+  var b = document.getElementById('del');
+  b.disabled = true;
+  b.textContent = 'Suppression…';
+  act({t: 'delete', ids: Array.from(sel)});
 }
 """
 
@@ -391,7 +412,7 @@ def folder_section(folder):
             out.append("<div class='file'><span>" + html.escape(rel) + "</span><span class='num'>" + fmt_size(size) + "</span></div>")
         out.append("</div><p class='small muted'>Pour supprimer : ouvre l'app Fichiers, appuie longuement sur le fichier › Supprimer, "
                    "puis vide <em>Suppressions récentes</em>.</p>")
-    out.append("<div class='row'><button onclick=\"location.href='placenette://folder'\">" +
+    out.append("<div class='row'><button onclick=\"act({t: 'folder'})\">" +
                ("Analyser un autre dossier" if folder and not folder.get("error") else "Choisir un dossier") + "</button>"
                "<button onclick=\"go('shareddocuments://')\">Ouvrir Fichiers</button></div></div>")
     return "".join(out)
@@ -455,6 +476,9 @@ def report_page(lib, total, free, notice="", folder=None):
         "<div><span class='eyebrow'>Captures d'écran</span><span class='num'>" + fmt_num(len(screens)) + "</span></div>"
         "<div><span class='eyebrow'>Doublons probables</span><span class='num'>" + fmt_num(len(dup_copies)) + "</span></div>"
         "</div>")
+    if _thumb_errors and not any(_thumbs.values()):
+        out.append("<p class='small warn'>Les aperçus n'ont pas pu être créés (" + html.escape(_thumb_errors[0]) +
+                   "). Envoie une capture de ce message.</p>")
     out.append(apps_section())
     out.append(folder_section(folder))
 
@@ -519,15 +543,46 @@ class App:
         self.wv.delegate = self
         self.wv.load_html(loading_page())
         self.wv.present("fullscreen")
+        self.busy = False
+        threading.Thread(target=self.poll_actions, daemon=True).start()
         self.run_scan()
+
+    def js(self, code):
+        # Appelé depuis un fil d'arrière-plan : eval_js attend la réponse de la page
+        return self.wv.eval_js(code)
+
+    def poll_actions(self):
+        """Lit toutes les 0,3 s les actions demandées par la page (supprimer, ouvrir une app, choisir un dossier)."""
+        time.sleep(1)
+        while self.wv.on_screen:
+            time.sleep(0.3)
+            try:
+                raw = self.js("typeof takeActions === 'function' ? takeActions() : '[]'")
+                actions = json.loads(raw or "[]")
+            except Exception:
+                continue
+            for a in actions:
+                self.handle(a)
+
+    def handle(self, a):
+        t = a.get("t")
+        if t == "delete" and not self.busy:
+            self.delete(a.get("ids") or [])
+        elif t == "open" and a.get("u"):
+            self.open_url(a["u"])
+        elif t == "folder":
+            try:
+                self.pick_folder()
+            except Exception as e:
+                self.folder = {"error": "Le choix de dossier n'est pas disponible (" + str(e) + ")."}
+                self.refresh()
 
     @on_main_thread
     def show(self, html_text):
         self.wv.load_html(html_text)
 
-    @on_main_thread
     def progress(self, step, i, n):
-        self.wv.eval_js("setProgress(%s, %f)" % (json.dumps(step), (i / n) if n else 0))
+        self.js("setProgress(%s, %f)" % (json.dumps(step), (i / n) if n else 0))
 
     @ui.in_background
     def run_scan(self):
@@ -550,11 +605,15 @@ class App:
     def delete(self, ids):
         assets = [self.lib.by_id[i] for i in ids if i in self.lib.by_id]
         if not assets:
+            self.refresh("Rien à supprimer : ces éléments ne sont plus dans la photothèque.")
             return
+        self.busy = True
+        error = ""
         try:
             photos.batch_delete(assets)  # iOS affiche sa propre confirmation
-        except Exception:
-            pass
+        except Exception as e:
+            error = repr(e)
+        self.busy = False
         remaining = still_present(ids)
         deleted = [i for i in ids if i not in remaining]
         freed = sum(it["size"] for it in self.lib.items if it["id"] in set(deleted))
@@ -564,8 +623,10 @@ class App:
                       " supprimé" + ("s" if len(deleted) > 1 else "") + ", " + fmt_size(freed) + ".</strong> "
                       "Ils restent 30 jours dans <em>Supprimés récemment</em>. Pour libérer la place tout de suite : "
                       "Photos › Albums › Supprimés récemment › Sélectionner › Tout supprimer.")
+        elif error:
+            notice = "La suppression a échoué : " + html.escape(error) + ". Envoie une capture de ce message."
         else:
-            notice = "Rien n'a été supprimé."
+            notice = "Rien n'a été supprimé : la confirmation d'iOS a été refusée ou ne s'est pas affichée."
         self.refresh(notice)
 
     def refresh(self, notice=""):
@@ -600,30 +661,8 @@ class App:
             self.folder = {"error": "Impossible de lire ce dossier (" + str(e) + "). iOS ne l'autorise peut-être pas."}
         self.refresh()
 
-    # Délégué du WebView : les boutons de la page appellent placenette://…
     def webview_should_start_load(self, webview, url, nav_type):
-        if url.startswith("placenette://delete"):
-            query = urllib.parse.urlparse(url).query
-            raw = urllib.parse.parse_qs(query).get("ids", ["[]"])[0]
-            try:
-                ids = json.loads(raw)
-            except ValueError:
-                ids = []
-            self.delete(ids)
-            return False
-        if url.startswith("placenette://open"):
-            target = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("u", [""])[0]
-            if target:
-                self.open_url(target)
-            return False
-        if url.startswith("placenette://folder"):
-            try:
-                self.pick_folder()
-            except Exception as e:
-                self.folder = {"error": "Le choix de dossier n'est pas disponible (" + str(e) + ")."}
-                self.refresh()
-            return False
-        return True
+        return not url.startswith("placenette://")
 
 
 # Délégué du sélecteur de dossier (UIDocumentPickerViewController)
