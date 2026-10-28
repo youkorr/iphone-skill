@@ -209,6 +209,7 @@ details.steps ol { padding-left: 76px; display: grid; gap: 6px; }
 
 /* Raccourcis et seconde vie */
 .recipe { background: var(--surface); border-radius: var(--radius); padding: 18px; display: grid; gap: 12px; }
+.template { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .recipe ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
 .action-name { font-weight: 600; background: var(--accent-soft); padding: 1px 7px; border-radius: 6px; white-space: nowrap; }
 .ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -223,6 +224,13 @@ details.steps ol { padding-left: 76px; display: grid; gap: 6px; }
 .checklist small { display: block; color: var(--muted); font-size: 0.82rem; }
 .verdict { display: grid; gap: 6px; }
 footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
+.text-area {
+  width: 100%; font: 500 0.9rem/1.4 var(--font-num); padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical;
+}
+.lib-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lib-grid div { background: var(--bg); border-radius: 10px; padding: 10px 12px; display: grid; gap: 2px; }
+.lib-grid .num { font-size: 1.15rem; }
 .scan-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 .scan-table td { padding: 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 .scan-table td:last-child { text-align: right; white-space: nowrap; }
@@ -294,6 +302,16 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
       <input id="scan-input" type="file" accept="image/*" multiple hidden>
       <p class="small muted" id="scan-status" hidden></p>
       <div id="scan-review" class="stack" hidden></div>
+    </div>
+
+    <div class="card" id="lib-card">
+      <div class="stack">
+        <h2>Ta photothèque</h2>
+        <p class="small muted">Lance le raccourci <strong>Analyser mon iPhone</strong>, puis colle ici le texte qu'il a copié. <a href="#raccourcis">Créer le raccourci</a></p>
+      </div>
+      <textarea id="lib-input" class="text-area" rows="2" placeholder="PLACENETTE photos=… videos=…"></textarea>
+      <div class="row"><button type="button" class="btn small-btn" id="lib-read">Lire le résultat</button></div>
+      <div id="lib-summary" class="stack" hidden></div>
     </div>
 
     <div class="notice" id="example-notice">
@@ -443,6 +461,18 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
 
   var TASKS = [
     {
+      id: "old-screens", cat: "photos", risk: "check",
+      title: "Supprimer les vieilles captures d'écran",
+      path: "Raccourci « Ménage des captures »",
+      when: function () { return state.library && state.library.oldScreens > 0; },
+      // Une capture d'écran d'iPhone pèse environ 1,5 Mo
+      gain: function () { return state.library.oldScreens * 0.0015; },
+      why: function () {
+        return "Tu as " + fmt(state.library.oldScreens, 0) + " captures d'écran de plus de 30 jours, sur " + fmt(state.library.screens, 0) + " au total.";
+      },
+      steps: ["Crée le raccourci « Ménage des captures » de l'onglet Raccourcis.", "Lance-le : iOS demande confirmation avant de supprimer.", "Vide ensuite l'album Supprimés récemment pour libérer la place."]
+    },
+    {
       id: "icloud-optimize", cat: "photos", risk: "safe",
       title: "Optimiser le stockage des photos",
       path: "Réglages › [ton nom] › iCloud › Photos",
@@ -456,7 +486,11 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
       title: "Trier les vidéos les plus lourdes",
       path: "Photos › Albums › Types de médias › Vidéos",
       gain: function (d) { return d.photos * (d.icloud === "oui" ? 0.1 : 0.25); },
-      why: "Une minute de vidéo en 4K à 60 i/s pèse environ 400 Mo. Quelques vidéos longues suffisent à remplir un iPhone.",
+      why: function () {
+        var lib = state.library;
+        return (lib && lib.videos ? "Tu as " + fmt(lib.videos, 0) + " vidéos. " : "") +
+          "Une minute de vidéo en 4K à 60 i/s pèse environ 400 Mo. Quelques vidéos longues suffisent à remplir un iPhone.";
+      },
       steps: ["Repère les vidéos longues : la durée est affichée sur chaque vignette.", "Envoie celles qui comptent vers un cloud ou un proche, puis supprime-les.", "Pour la suite : Réglages › Appareil photo › Enregistrer une vidéo › 1080p à 30 i/s."]
     },
     {
@@ -545,6 +579,22 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
 
   var RECIPES = [
     {
+      title: "Analyser mon iPhone",
+      desc: "Compte tes photos, vidéos et captures d'écran, puis copie le résultat pour Place Nette. À créer une fois, à lancer quand tu veux. Pour les ajouter, cherche le nom de chaque action dans la barre de recherche en bas de l'éditeur.",
+      steps: [
+        "Ouvre Raccourcis, touche <strong>+</strong> et renomme le raccourci « Analyser mon iPhone ».",
+        "Ajoute <span class=\"action-name\">Rechercher des photos</span> sans filtre, puis <span class=\"action-name\">Compter</span>, puis <span class=\"action-name\">Définir une variable</span> nommée <em>Photos</em>.",
+        "Ajoute à nouveau <span class=\"action-name\">Rechercher des photos</span> avec le filtre <em>Type de média</em> est <em>Vidéo</em>, puis <span class=\"action-name\">Compter</span> et <span class=\"action-name\">Définir une variable</span> <em>Videos</em>.",
+        "Même chose avec le filtre <em>Est une capture d'écran</em> est <em>vrai</em> : variable <em>Captures</em>.",
+        "Même chose avec deux filtres, <em>Est une capture d'écran</em> est <em>vrai</em> et <em>Date de création</em> n'est pas dans les <em>30 derniers jours</em> : variable <em>Vieilles</em>.",
+        "Ajoute <span class=\"action-name\">Obtenir les détails de l'appareil</span> et choisis <em>Version du système</em>.",
+        "Ajoute l'action <span class=\"action-name\">Texte</span> et écris le modèle ci-dessous. À la place de chaque <em>[…]</em>, touche la variable du même nom dans la barre au-dessus du clavier.",
+        "Ajoute <span class=\"action-name\">Copier dans le presse-papiers</span>, puis <span class=\"action-name\">Afficher une notification</span> avec « Résultat copié, colle-le dans Place Nette ».",
+        "Lance le raccourci et autorise l'accès à Photos. Avec beaucoup de photos, le comptage prend quelques secondes."
+      ],
+      template: "PLACENETTE photos=[Photos] videos=[Videos] captures=[Captures] vieilles=[Vieilles] ios=[Version du système]"
+    },
+    {
       title: "Ménage des captures d'écran",
       desc: "Supprime d'un coup les captures de plus de 30 jours. iOS te demande confirmation avant d'effacer.",
       steps: [
@@ -625,7 +675,7 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
   function load() {
     var s = null;
     try { s = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { s = null; }
-    var base = { data: Object.assign({}, EXAMPLE), done: {}, checks: {}, freeAfter: "", battery: "" };
+    var base = { data: Object.assign({}, EXAMPLE), done: {}, checks: {}, freeAfter: "", battery: "", library: null };
     if (!s || !s.data) return base;
     return Object.assign(base, s, { data: Object.assign({}, EXAMPLE, s.data) });
   }
@@ -793,7 +843,7 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
           '<div class="gain"><span class="num">≈ ' + fmt(x.gain) + ' Go</span><span class="chip ' + risk.cls + '">' + risk.label + "</span></div>" +
         "</div>" +
         '<details class="steps"><summary>Comment faire</summary>' +
-          '<p class="why small">' + t.why + "</p>" +
+          '<p class="why small">' + (typeof t.why === "function" ? t.why() : t.why) + "</p>" +
           "<ol>" + t.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
         "</details>";
       card.querySelector(".check").addEventListener("change", function (e) {
@@ -824,10 +874,29 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
   }
 
   function renderRecipes() {
-    $("recipes").innerHTML = RECIPES.map(function (r) {
+    $("recipes").innerHTML = RECIPES.map(function (r, i) {
       return '<article class="recipe"><h3>' + r.title + '</h3><p class="small muted">' + r.desc + "</p><ol>" +
-        r.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol></article>";
+        r.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
+        (r.template ? '<p class="eyebrow">Modèle du texte</p><pre class="text-area template" id="tpl-' + i + '">' + r.template + "</pre>" +
+          '<div class="row"><button type="button" class="btn ghost small-btn" data-copy="tpl-' + i + '">Copier le modèle</button></div>' : "") +
+        "</article>";
     }).join("");
+    document.querySelectorAll("[data-copy]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var src = $(b.getAttribute("data-copy"));
+        function selectIt() {
+          var range = document.createRange();
+          range.selectNodeContents(src);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          b.textContent = "Sélectionné, copie-le";
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(src.textContent).then(function () { b.textContent = "Modèle copié"; }, selectIt);
+        } else selectIt();
+      });
+    });
   }
 
   function renderChecklist(boxId, items) {
@@ -1029,6 +1098,67 @@ footer.note { font-size: 0.82rem; color: var(--muted); text-align: center; }
   }
 
   var scanResult = null;
+
+  // --- Résultat du raccourci « Analyser mon iPhone » ---------------------
+  var LIB_KEYS = { photos: "photos", videos: "videos", captures: "screens", vieilles: "oldScreens" };
+
+  function parseLibrary(text) {
+    var start = text.toUpperCase().indexOf("PLACENETTE");
+    if (start === -1) return null;
+    var lib = {}, found = 0, re = /([a-z]+)\s*=\s*([\d][\d\s.,]*)/gi, m;
+    var body = text.slice(start);
+    while ((m = re.exec(body))) {
+      var k = m[1].toLowerCase(), v = m[2].trim();
+      if (k === "ios") { lib.ios = v.replace(/[\s,]+$/, ""); found++; continue; }
+      if (LIB_KEYS[k]) {
+        lib[LIB_KEYS[k]] = parseInt(v.replace(/[\s.,]/g, ""), 10) || 0;
+        found++;
+      }
+    }
+    return found ? lib : null;
+  }
+
+  function renderLibrary() {
+    var box = $("lib-summary");
+    var lib = state.library;
+    if (!lib) { box.hidden = true; return; }
+    box.hidden = false;
+    function tile(label, v) {
+      return v == null ? "" : '<div><span class="eyebrow">' + label + '</span><span class="num">' + v + "</span></div>";
+    }
+    box.innerHTML = '<div class="lib-grid">' +
+      tile("Photos et vidéos", lib.photos != null ? fmt(lib.photos, 0) : null) +
+      tile("Vidéos", lib.videos != null ? fmt(lib.videos, 0) : null) +
+      tile("Captures d'écran", lib.screens != null ? fmt(lib.screens, 0) : null) +
+      tile("iOS", lib.ios || null) + "</div>" +
+      (lib.oldScreens ? '<p class="small">' + fmt(lib.oldScreens, 0) + " captures de plus de 30 jours, soit environ <strong class=\"num\">" + fmt(lib.oldScreens * 0.0015) + " Go</strong>. Une action a été ajoutée au plan.</p>" : "");
+  }
+
+  function readLibrary(text) {
+    var lib = parseLibrary(text || "");
+    var box = $("lib-summary");
+    if (!lib) {
+      box.hidden = false;
+      box.innerHTML = '<p class="small">Ce texte ne vient pas du raccourci : il doit commencer par PLACENETTE. Relance le raccourci, puis colle à nouveau.</p>';
+      return;
+    }
+    state.library = lib;
+    save();
+    renderLibrary();
+    renderAll();
+  }
+
+  $("lib-read").addEventListener("click", function () { readLibrary($("lib-input").value); });
+  $("lib-input").addEventListener("paste", function (e) {
+    var t = e.clipboardData && e.clipboardData.getData("text");
+    if (t && /PLACENETTE/i.test(t)) setTimeout(function () { readLibrary(t); }, 0);
+  });
+  // Version installée : le raccourci peut aussi ouvrir l'app avec ?r=PLACENETTE…
+  try {
+    var q = new URLSearchParams(location.search).get("r");
+    if (q) readLibrary(q);
+  } catch (e) { /* pas de paramètre */ }
+  renderLibrary();
 
   function scanStatus(html) {
     var st = $("scan-status");
