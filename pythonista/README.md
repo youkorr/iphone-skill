@@ -6,6 +6,8 @@ Version « app » de Place Nette, qui tourne dans [Pythonista 3](https://apps.ap
 - toutes les photos et vidéos avec leur taille réelle ;
 - les vidéos les plus lourdes, les captures d'écran et les doublons probables (mêmes dimensions, même taille au octet près).
 
+Elle guide aussi le nettoyage de WhatsApp, TikTok, Instagram, Snapchat, Telegram, Facebook, Spotify, YouTube, Netflix, Notes et Messages (avec un bouton pour ouvrir chaque app), et peut lister les fichiers les plus lourds d'un dossier de l'app Fichiers.
+
 On coche ce qu'on veut supprimer ; iOS demande confirmation et les éléments passent par « Supprimés récemment ».
 
 ## Installer ou mettre à jour

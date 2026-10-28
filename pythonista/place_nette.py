@@ -13,14 +13,55 @@ import urllib.parse
 
 import photos
 import ui
-from objc_util import ObjCClass, ns, on_main_thread
+from objc_util import ObjCClass, ObjCInstance, create_objc_class, ns, nsurl, on_main_thread
 
-VERSION = "1.0"
+VERSION = "1.1"
 TOP_VIDEOS = 30
 MAX_SCREEN_THUMBS = 60
 MAX_DUP_GROUPS = 40
 MAX_DUP_TILES = 6
 THUMB_SIZE = (150, 150)
+TOP_FILES = 40
+
+# Apps qui ont leur propre outil de nettoyage. iOS interdit de le faire à leur place.
+APPS = [
+    ("WhatsApp", "whatsapp://", [
+        "Onglet <strong>Réglages</strong> › <strong>Stockage et données</strong> › <strong>Gérer le stockage</strong>.",
+        "Ouvre « Plus de 5 Mo » et les discussions les plus lourdes, sélectionne et supprime.",
+        "Pour éviter les doublons : Réglages › Discussions › désactive <strong>Enregistrer dans Photos</strong>.",
+        "Pour limiter : Stockage et données › Téléchargement automatique des médias › Wi-Fi ou Jamais."]),
+    ("TikTok", "tiktok://", [
+        "Onglet <strong>Profil</strong> › <strong>☰</strong> en haut à droite › <strong>Paramètres et confidentialité</strong>.",
+        "<strong>Libérer de l'espace</strong> › <strong>Cache</strong> › Effacer.",
+        "Dans le même écran, supprime les <strong>Téléchargements</strong> et brouillons inutiles."]),
+    ("Instagram", "instagram://app", [
+        "Instagram n'a pas de bouton pour vider son cache.",
+        "Réglages › Général › Stockage iPhone › Instagram : si « Documents et données » dépasse 1 Go, supprime l'app puis réinstalle-la.",
+        "Vérifie ton mot de passe avant."]),
+    ("Snapchat", "snapchat://", [
+        "Touche ton avatar › <strong>⚙️</strong> › <strong>Actions sur le compte</strong> › <strong>Vider le cache</strong>.",
+        "Tes Souvenirs ne sont pas supprimés."]),
+    ("Telegram", "tg://", [
+        "<strong>Réglages</strong> › <strong>Données et stockage</strong> › <strong>Utilisation du stockage</strong> › <strong>Vider le cache</strong>.",
+        "Règle <strong>Conserver les médias</strong> sur 1 semaine pour que ça ne revienne pas."]),
+    ("Facebook", "fb://", [
+        "Menu › Paramètres et confidentialité › <strong>Paramètres</strong> › <strong>Navigateur</strong> › Effacer les données de navigation.",
+        "Si l'app pèse encore plus de 1 Go : supprime-la et réinstalle-la."]),
+    ("Spotify", "spotify://", [
+        "<strong>Accueil</strong> › ta photo › <strong>Paramètres et confidentialité</strong> › <strong>Stockage</strong> › <strong>Vider le cache</strong>.",
+        "Dans le même écran, <strong>Supprimer tous les téléchargements</strong> si tu ne les écoutes plus."]),
+    ("YouTube", "youtube://", [
+        "Onglet <strong>Vous</strong> › <strong>Téléchargements</strong> : supprime les vidéos déjà vues."]),
+    ("Netflix", "nflx://", [
+        "Onglet <strong>Mon Netflix</strong> › <strong>Téléchargements</strong> : supprime les épisodes vus.",
+        "Active <strong>Téléchargements intelligents</strong> pour qu'ils s'effacent tout seuls."]),
+    ("Notes", "mobilenotes://", [
+        "Dans la liste des dossiers, touche <strong>…</strong> › <strong>Afficher les pièces jointes</strong> : photos, vidéos et PDF des notes, à supprimer depuis la note.",
+        "Vide ensuite le dossier <strong>Supprimées récemment</strong> des Notes."]),
+    ("Messages", "", [
+        "Réglages › Général › Stockage iPhone › Messages › <strong>Examiner les grandes pièces jointes</strong>.",
+        "Réglages › Apps › Messages › <strong>Garder les messages</strong> › 1 an."]),
+]
 
 
 # --- Mesures -----------------------------------------------------------------
@@ -79,7 +120,17 @@ def estimate_size(asset):
     return 3_000_000
 
 
+_thumbs = {}
+
+
 def thumb(asset):
+    if asset.local_id in _thumbs:
+        return _thumbs[asset.local_id]
+    _thumbs[asset.local_id] = _make_thumb(asset)
+    return _thumbs[asset.local_id]
+
+
+def _make_thumb(asset):
     try:
         img = asset.get_ui_image(size=THUMB_SIZE, crop=True)
         if img:
@@ -138,6 +189,26 @@ def still_present(ids):
     PHAsset = ObjCClass("PHAsset")
     result = PHAsset.fetchAssetsWithLocalIdentifiers_options_(ns(ids), None)
     return {str(result.objectAtIndex_(i).localIdentifier()) for i in range(int(result.count()))}
+
+
+def scan_folder(path):
+    """Fichiers les plus lourds d'un dossier choisi dans l'app Fichiers."""
+    files, total, count = [], 0, 0
+    for root, dirs, names in os.walk(path):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for n in names:
+            if n.startswith("."):
+                continue
+            fp = os.path.join(root, n)
+            try:
+                size = os.path.getsize(fp)
+            except OSError:
+                continue
+            total += size
+            count += 1
+            files.append((size, os.path.relpath(fp, path)))
+    files.sort(reverse=True)
+    return {"name": os.path.basename(path.rstrip("/")) or path, "total": total, "count": count, "top": files[:TOP_FILES]}
 
 
 # --- Mise en forme -----------------------------------------------------------
@@ -224,6 +295,13 @@ button { font: 600 0.92rem -apple-system, system-ui, sans-serif; border-radius: 
   background: var(--surface); border-top: 1px solid var(--line); display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .dock button { background: var(--accent); color: var(--accent-ink); border: 0; padding: 12px 18px; font-size: 1rem; }
 .dock button:disabled { opacity: .4; }
+details.app { border-top: 1px solid var(--line); padding-top: 10px; }
+details.app summary { font-weight: 600; cursor: pointer; }
+details.app ol { margin: 8px 0; padding-left: 1.3em; display: grid; gap: 6px; font-size: 0.92rem; }
+.files { display: grid; gap: 2px; }
+.file { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 0.88rem; }
+.file span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.file .num { white-space: nowrap; }
 .progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 """
@@ -245,6 +323,7 @@ function fmtSize(b) {
 function tog(el) { var id = el.dataset.id; sel.has(id) ? sel.delete(id) : sel.add(id); upd(); }
 function pick(key) { (GROUPS[key] || []).forEach(function (id) { sel.add(id); }); upd(); }
 function clearSel() { sel.clear(); upd(); }
+function go(u) { location.href = 'placenette://open?u=' + encodeURIComponent(u); }
 function del() {
   if (!sel.size) return;
   location.href = 'placenette://delete?ids=' + encodeURIComponent(JSON.stringify(Array.from(sel)));
@@ -283,7 +362,42 @@ def tile(item, asset, label_right):
             "<span class='meta'><span>" + left + "</span><span>" + html.escape(label_right) + "</span></span></div>")
 
 
-def report_page(lib, total, free, notice=""):
+def apps_section():
+    out = ["<div class='card'><h2>Nettoyer WhatsApp, TikTok et les autres</h2>"
+           "<p class='small muted'>iOS interdit à toute app de toucher aux données des autres. Mais la plupart ont leur propre "
+           "bouton de nettoyage, bien caché. Vérifie d'abord lesquelles pèsent le plus : "
+           "Réglages › Général › Stockage iPhone.</p>"
+           "<div class='row'><button onclick=\"go('App-prefs:General&path=STORAGE_MGMT')\">Ouvrir Stockage iPhone</button></div>"]
+    for name, scheme, steps in APPS:
+        out.append("<details class='app'><summary>" + name + "</summary><ol>" +
+                   "".join("<li>" + st + "</li>" for st in steps) + "</ol>" +
+                   ("<button onclick=\"go('" + scheme + "')\">Ouvrir " + name + "</button>" if scheme else "") +
+                   "</details>")
+    out.append("</div>")
+    return "".join(out)
+
+
+def folder_section(folder):
+    out = ["<div class='card'><h2>App Fichiers</h2>"]
+    if not folder:
+        out.append("<p class='small muted'>Téléchargements et documents ne sont pas dans Photos. Choisis un dossier, par exemple "
+                   "<em>Sur mon iPhone</em> ou <em>Téléchargements</em>, pour voir ses fichiers les plus lourds.</p>")
+    elif folder.get("error"):
+        out.append("<p class='small warn'>" + html.escape(folder["error"]) + "</p>")
+    else:
+        out.append("<p class='small muted'><strong>" + html.escape(folder["name"]) + "</strong> : " + fmt_num(folder["count"]) +
+                   " fichiers, " + fmt_size(folder["total"]) + ". Les plus lourds :</p><div class='files'>")
+        for size, rel in folder["top"]:
+            out.append("<div class='file'><span>" + html.escape(rel) + "</span><span class='num'>" + fmt_size(size) + "</span></div>")
+        out.append("</div><p class='small muted'>Pour supprimer : ouvre l'app Fichiers, appuie longuement sur le fichier › Supprimer, "
+                   "puis vide <em>Suppressions récentes</em>.</p>")
+    out.append("<div class='row'><button onclick=\"location.href='placenette://folder'\">" +
+               ("Analyser un autre dossier" if folder and not folder.get("error") else "Choisir un dossier") + "</button>"
+               "<button onclick=\"go('shareddocuments://')\">Ouvrir Fichiers</button></div></div>")
+    return "".join(out)
+
+
+def report_page(lib, total, free, notice="", folder=None):
     items = lib.items
     cap = marketing_capacity(total)
     used = max(0, total - free)
@@ -341,6 +455,8 @@ def report_page(lib, total, free, notice=""):
         "<div><span class='eyebrow'>Captures d'écran</span><span class='num'>" + fmt_num(len(screens)) + "</span></div>"
         "<div><span class='eyebrow'>Doublons probables</span><span class='num'>" + fmt_num(len(dup_copies)) + "</span></div>"
         "</div>")
+    out.append(apps_section())
+    out.append(folder_section(folder))
 
     # Vidéos les plus lourdes
     top = sorted(vids, key=lambda it: -it["size"])[:TOP_VIDEOS]
@@ -382,8 +498,8 @@ def report_page(lib, total, free, notice=""):
 
     out.append(
         "<div class='card'><h2>Ce que Place Nette ne peut pas faire</h2>"
-        "<p class='small muted'>iOS interdit à toute app de vider le cache des autres apps ou les Données système. "
-        "Pour ça : Réglages › Général › Stockage iPhone, puis décharge ou réinstalle les apps les plus lourdes.</p></div>")
+        "<p class='small muted'>Aucune app ne peut vider les Données système ni les caches des autres apps : seul iOS les gère. "
+        "Redémarrer l'iPhone et installer la dernière mise à jour d'iOS aide à les faire baisser.</p></div>")
     out.append("<p class='small muted' style='text-align:center'>Place Nette " + VERSION + " · rien ne quitte ton iPhone</p>")
     out.append("</div>")
     out.append("<div class='dock'><span class='small' id='sel-count'>Rien de sélectionné</span>"
@@ -398,6 +514,7 @@ def report_page(lib, total, free, notice=""):
 class App:
     def __init__(self):
         self.lib = Library()
+        self.folder = None
         self.wv = ui.WebView(name="Place Nette")
         self.wv.delegate = self
         self.wv.load_html(loading_page())
@@ -419,8 +536,7 @@ class App:
                 photos.get_assets()  # déclenche la demande d'accès
             self.lib.scan(self.progress)
             self.progress("Préparation des aperçus", 1, 1)
-            total, free = read_storage()
-            self.show(report_page(self.lib, total, free))
+            self.refresh()
         except Exception:
             if not photos.is_authorized():
                 self.show(message_page("Accès aux photos refusé",
@@ -443,7 +559,6 @@ class App:
         deleted = [i for i in ids if i not in remaining]
         freed = sum(it["size"] for it in self.lib.items if it["id"] in set(deleted))
         self.lib.remove(deleted)
-        total, free = read_storage()
         if deleted:
             notice = ("<strong>" + fmt_num(len(deleted)) + " élément" + ("s" if len(deleted) > 1 else "") +
                       " supprimé" + ("s" if len(deleted) > 1 else "") + ", " + fmt_size(freed) + ".</strong> "
@@ -451,7 +566,39 @@ class App:
                       "Photos › Albums › Supprimés récemment › Sélectionner › Tout supprimer.")
         else:
             notice = "Rien n'a été supprimé."
-        self.show(report_page(self.lib, total, free, notice))
+        self.refresh(notice)
+
+    def refresh(self, notice=""):
+        total, free = read_storage()
+        self.show(report_page(self.lib, total, free, notice, self.folder))
+
+    @on_main_thread
+    def open_url(self, u):
+        app = ObjCClass("UIApplication").sharedApplication()
+        app.openURL_options_completionHandler_(nsurl(u), ns({}), None)
+
+    @on_main_thread
+    def pick_folder(self):
+        UTType = ObjCClass("UTType")
+        picker = ObjCClass("UIDocumentPickerViewController").alloc().initForOpeningContentTypes_(
+            ns([UTType.typeWithIdentifier_("public.folder")]))
+        picker.setDelegate_(_picker_delegate(self))
+        root = ObjCClass("UIApplication").sharedApplication().keyWindow().rootViewController()
+        while root.presentedViewController():
+            root = root.presentedViewController()
+        root.presentViewController_animated_completion_(picker, True, None)
+
+    @ui.in_background
+    def folder_picked(self, url):
+        try:
+            url.startAccessingSecurityScopedResource()
+            try:
+                self.folder = scan_folder(str(url.path()))
+            finally:
+                url.stopAccessingSecurityScopedResource()
+        except Exception as e:
+            self.folder = {"error": "Impossible de lire ce dossier (" + str(e) + "). iOS ne l'autorise peut-être pas."}
+        self.refresh()
 
     # Délégué du WebView : les boutons de la page appellent placenette://…
     def webview_should_start_load(self, webview, url, nav_type):
@@ -464,7 +611,54 @@ class App:
                 ids = []
             self.delete(ids)
             return False
+        if url.startswith("placenette://open"):
+            target = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("u", [""])[0]
+            if target:
+                self.open_url(target)
+            return False
+        if url.startswith("placenette://folder"):
+            try:
+                self.pick_folder()
+            except Exception as e:
+                self.folder = {"error": "Le choix de dossier n'est pas disponible (" + str(e) + ")."}
+                self.refresh()
+            return False
         return True
+
+
+# Délégué du sélecteur de dossier (UIDocumentPickerViewController)
+_picker_app = [None]
+
+
+def documentPicker_didPickDocumentsAtURLs_(_self, _cmd, _picker, _urls):
+    urls = ObjCInstance(_urls)
+    if _picker_app[0] is not None and urls.count():
+        _picker_app[0].folder_picked(urls.objectAtIndex_(0))
+
+
+def documentPickerWasCancelled_(_self, _cmd, _picker):
+    pass
+
+
+_PickerDelegate = None
+
+
+def _picker_delegate(app):
+    global _PickerDelegate
+    _picker_app[0] = app
+    if _PickerDelegate is None:
+        try:
+            # Pythonista garde les classes Objective-C d'un lancement à l'autre
+            _PickerDelegate = ObjCClass("PlaceNettePickerDelegate")
+        except ValueError:
+            _PickerDelegate = None
+    if _PickerDelegate is None:
+        _PickerDelegate = create_objc_class(
+            "PlaceNettePickerDelegate",
+            methods=[documentPicker_didPickDocumentsAtURLs_, documentPickerWasCancelled_],
+            protocols=["UIDocumentPickerDelegate"])
+    app._delegate = _PickerDelegate.new()  # garder une référence tant que le sélecteur est ouvert
+    return app._delegate
 
 
 if __name__ == "__main__":
